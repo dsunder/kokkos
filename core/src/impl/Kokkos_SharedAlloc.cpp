@@ -48,7 +48,16 @@ namespace Impl {
 
 namespace {
 
-__thread int t_tracking_enabled = 1;
+#if   defined( KOKKOS_ENABLE_OPENMP )
+ int t_tracking_enabled = 1;
+ #pragma omp threadprivate(t_tracking_enabled)
+#elif   defined (KOKKOS_ENABLE_THREADS )
+ __thread int t_tracking_enabled = 1;
+#elif defined (KOKKOS_ENABLE_STDTHREADS )
+ thread_local int t_tracking_enabled = 1;
+#else // Serial only
+ int t_tracking_enabled = 1;
+#endif
 
 }
 
