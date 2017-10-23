@@ -62,10 +62,12 @@ struct ThreadExecutionResource::Impl
   hwloc_cpuset_t m_cpuset         {nullptr};
   Impl *         m_member_of      {nullptr};
   Impl *         m_partitions     {nullptr};
-  int            m_num_partitions {0};
   int            m_concurrency    {0};
+  int            m_num_partitions {0};
   int            m_level          {0};
-  int            m_partition_id   {0};
+  int            m_member_id      {0};
+  int            m_arity          {0};
+  int            m_pad            {0};  // used to pad sizeof
 };
 
 //------------------------------------------------------------------------------
@@ -108,53 +110,47 @@ hwloc_bitmap_t get_cpuset( hwloc_obj_t obj ) noexcept
   return result;
 }
 
-int initialize_tree( ThreadExecutionResource::Impl * impl
-                   , ThreadExecutionResource::Impl * member_of
-                   , hwloc_obj_t obj
-                   , hwloc_cpuset_t scratch
-                   , int level
-                   , int partition_id
-                   ) noexcept
+void initialize_tree( ThreadExecutionResource::Impl * impl
+                    , ThreadExecutionResource::Impl * member_of
+                    , hwloc_obj_t obj
+                    , hwloc_cpuset_t scratch
+                    , int level
+                    , int member_id
+                    , int arity
+                    ) noexcept
 {
   impl->m_cpuset         = get_cpuset( obj );
   impl->m_member_of      = member_of;
+  impl->m_concurrency    = hwloc_bitmap_weight( impl->m_cpuset );
   impl->m_level          = level;
-  impl->m_partition_id   = partition_id;
+  impl->m_member_id      = member_id;
+  impl->m_arity          = arity;
 
-  int npartitions = get_num_partitions( obj, scratch );
-  hwloc_obj_t tmp_obj = obj;
-
-  while ( npartitions == 1 ) {
-    for (int i=0; i < tmp_obj->arity; ++i) {
-      if ( intersect_process( tmp_obj->children[i], scratch) ) {
-        tmp_obj = tmp_obj->children[i];
-        break;
-      }
-    }
-    npartitions = get_num_partitions( tmp_obj, scratch );
+  // flatten out superfluous levels
+  while ( obj->arity == 1 ) {
+    obj = obj->children[0];
   }
 
-  impl->m_obj            = tmp_obj;
-  impl->m_num_partitions = npartitions;
+  impl->m_obj            = obj;
+  impl->m_num_partitions = get_num_partitions( obj, scratch );
 
-  if ( npartitions > 0 ) {
+  if ( impl->m_num_partitions > 0 ) {
     impl->m_partitions = new (std::nothrow) ThreadExecutionResource::Impl[impl->m_num_partitions]{};
 
-    impl->m_concurrency = 0;
-    for (int i=0, j=0; i < tmp_obj->arity; ++i) {
-      if ( intersect_process( tmp_obj->children[i], scratch) ) {
-        impl->m_concurrency += initialize_tree( impl->m_partitions + j
-                                              , impl
-                                              , tmp_obj->children[i]
-                                              , scratch
-                                              , level + 1
-                                              , j
-                                              );
+    for (int i=0, j=0; i < obj->arity; ++i) {
+      if ( intersect_process( obj->children[i], scratch) ) {
+        initialize_tree( impl->m_partitions + j
+                       , impl
+                       , obj->children[i]
+                       , scratch
+                       , level + 1
+                       , j
+                       , i
+                       );
         ++j;
       }
     }
   } else {
-    impl->m_concurrency = hwloc_bitmap_weight( impl->m_cpuset );
     g_leaves.push_back( impl );
   }
 
@@ -165,10 +161,8 @@ int initialize_tree( ThreadExecutionResource::Impl * impl
            });
 
   for (int i=0; i < impl->m_num_partitions; ++i) {
-    impl->m_partitions[i].m_partition_id = i;
+    impl->m_partitions[i].m_member_id  = i;
   }
-
-  return impl->m_concurrency;
 }
 
 void destroy_tree( ThreadExecutionResource::Impl * impl ) noexcept
@@ -231,6 +225,7 @@ void ThreadExecutionResource::initialize() noexcept
                  , scratch
                  , 0
                  , 0
+                 , 0
                  );
 
   std::sort( g_leaves.begin(), g_leaves.end()
@@ -291,6 +286,10 @@ const ThreadExecutionResource::Impl * get_impl( ThreadExecutionResource::Impl co
                                         ) noexcept
 {
   if( hwloc_bitmap_isequal(impl->m_cpuset, cpuset) ) {
+    // traverse to the lowest level
+    while (impl->m_num_partitions == 1) {
+      impl = impl->m_partitions;
+    }
     return impl;
   }
   else if ( impl->m_num_partitions > 0 ) {
@@ -341,7 +340,7 @@ ThreadExecutionResource this_thread_get_bind() noexcept
   return ThreadExecutionResource{ result };
 }
 
-ThreadExecutionResource this_thread_last_resource() noexcept
+ThreadExecutionResource this_thread_get_resource() noexcept
 {
   hwloc_cpuset_t scratch = hwloc_bitmap_alloc();
 
@@ -363,19 +362,35 @@ ThreadExecutionResource this_thread_last_resource() noexcept
   return ThreadExecutionResource{ result };
 }
 
-std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource res )
+namespace {
+
+std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource::Impl * res )
 {
   if (res) {
-    if(res.get_impl()->m_level == 0) {
+    if(res->m_level == 0) {
       out << "root";
     } else {
-      out << res.member_of() << "." << res.get_impl()->m_partition_id;
+      out << res->m_member_of << "." << res->m_arity;
     }
   }
   else {
     out << "null";
   }
 
+  return out;
+}
+
+
+} // namespace
+
+std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource res )
+{
+  if (res) {
+    out << "{ " << res.get_impl() << " : " << res.concurrency() << " }";
+  }
+  else {
+    out << "{ null : 0 }";
+  }
   return out;
 }
 
@@ -475,12 +490,12 @@ bool this_thread_set_binding( const ThreadExecutionResource res ) noexcept
 ThreadExecutionResource this_thread_get_bind() noexcept
 { return ThreadExecutionResource{&g_root}; }
 
-ThreadExecutionResource this_thread_last_resource() noexcept
+ThreadExecutionResource this_thread_get_resource() noexcept
 { return ThreadExecutionResource{&g_root}; }
 
 std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource res )
 {
-  out << "root";
+  out << "{ root : " << g_root.m_concurrency << " }";
   return out;
 }
 

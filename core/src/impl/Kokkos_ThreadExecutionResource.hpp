@@ -115,7 +115,7 @@ private:
 
 bool this_thread_set_binding( const ThreadExecutionResource ) noexcept;
 ThreadExecutionResource this_thread_get_binding() noexcept;
-ThreadExecutionResource this_thread_last_resource() noexcept;
+ThreadExecutionResource this_thread_get_resource() noexcept;
 
 std::ostream & operator <<( std::ostream & out, const ThreadExecutionResource );
 
