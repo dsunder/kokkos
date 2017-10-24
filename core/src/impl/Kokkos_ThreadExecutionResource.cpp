@@ -66,7 +66,7 @@ struct ThreadExecutionResource::Impl
   int            m_num_partitions {0};
   int            m_level          {0};
   int            m_member_id      {0};
-  int            m_arity          {0};
+  int            m_global_id      {0};
   int            m_pad            {0};  // used to pad sizeof
 };
 
@@ -116,7 +116,7 @@ void initialize_tree( ThreadExecutionResource::Impl * impl
                     , hwloc_cpuset_t scratch
                     , int level
                     , int member_id
-                    , int arity
+                    , int global_id
                     ) noexcept
 {
   impl->m_cpuset         = get_cpuset( obj );
@@ -124,7 +124,7 @@ void initialize_tree( ThreadExecutionResource::Impl * impl
   impl->m_concurrency    = hwloc_bitmap_weight( impl->m_cpuset );
   impl->m_level          = level;
   impl->m_member_id      = member_id;
-  impl->m_arity          = arity;
+  impl->m_global_id      = global_id;
 
   // flatten out superfluous levels
   while ( obj->arity == 1 ) {
@@ -260,6 +260,11 @@ ThreadExecutionResource ThreadExecutionResource::member_of() const noexcept
   return ThreadExecutionResource{ m_pimpl->m_member_of };
 }
 
+int ThreadExecutionResource::global_id() const noexcept
+{
+  return m_pimpl->m_global_id;
+}
+
 int ThreadExecutionResource::concurrency() const noexcept
 {
   return m_pimpl->m_concurrency;
@@ -370,7 +375,7 @@ std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource::Im
     if(res->m_level == 0) {
       out << "root";
     } else {
-      out << res->m_member_of << "." << res->m_arity;
+      out << res->m_member_of << "." << res->m_global_id;
     }
   }
   else {
@@ -399,16 +404,256 @@ std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource res
 
 }} // namespace Kokkos::Impl
 
+#elif defined( _GNU_SOURCE ) && !defined( __APPLE__ )
+
+#include <iostream>
+#include <vector>
+#include <algorithm>
+
+#include <sched.h>
+#include <unistd.h>
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+namespace Kokkos { namespace Impl {
+
+struct ThreadExecutionResource::Impl
+{
+  int    m_level          {0};
+  int    m_global_id      {0};
+};
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+namespace {
+
+cpu_set_t g_process     {};
+int       g_size        {0};
+int       g_concurrency {0};
+
+std::vector< ThreadExecutionResource::Impl > g_leaves;
+
+ThreadExecutionResource::Impl g_root {};
+
+} // namespace
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+ThreadExecutionResource ThreadExecutionResource::root() noexcept
+{
+  return ThreadExecutionResource{&g_root};
+}
+
+ThreadExecutionResource ThreadExecutionResource::leaf( int i ) noexcept
+{
+  return ThreadExecutionResource{ &g_leaves[i] };
+}
+
+int ThreadExecutionResource::num_leaves() noexcept
+{
+  return g_concurrency;
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+void ThreadExecutionResource::initialize() noexcept
+{
+  if (g_size == 0) {
+    CPU_ZERO( &g_process );
+
+    g_size = sysconf(_SC_NPROCESSORS_ONLN);
+
+    if (g_size <= 0) {
+      g_size = 0;
+    }
+    else {
+      #if defined( _OPENMP )
+        #pragma omp parallel
+        {
+          cpu_set_t tmp;
+          sched_getaffinity( 0
+                           , sizeof(cpu_set_t)
+                           , &tmp
+                           );
+          #pragma omp critical
+          {
+            CPU_OR( &g_process, &g_process, &tmp );
+          }
+        }
+      #else
+        sched_getaffinity( 0
+                         , sizeof(cpu_set_t)
+                         , &g_process
+                         );
+      #endif
+    }
+
+    g_concurrency = CPU_COUNT( &g_process );
+
+    g_leaves.resize( g_concurrency );
+
+    for (int i=0; i<g_size; ++i) {
+      if( CPU_ISSET( i , &g_process ) ) {
+        g_leaves[i].m_level     = 1;
+        g_leaves[i].m_global_id = i;
+      }
+    }
+  }
+}
+
+void ThreadExecutionResource::finalize() noexcept
+{
+  if (g_size > 0) {
+    g_size = 0;
+    g_concurrency = 0;
+    g_leaves.clear();
+  }
+}
+
+ThreadExecutionResource ThreadExecutionResource::member_of() const noexcept
+{
+
+  return m_pimpl->m_level == 0
+       ? ThreadExecutionResource{ nullptr }
+       : ThreadExecutionResource{ &g_root }
+       ;
+}
+
+int ThreadExecutionResource::global_id() const noexcept
+{
+  return m_pimpl->m_global_id;
+}
+
+int ThreadExecutionResource::concurrency() const noexcept
+{
+  return m_pimpl->m_level == 0
+       ? g_concurrency
+       : 1
+       ;
+}
+
+int ThreadExecutionResource::num_partitions() const noexcept
+{
+  return m_pimpl->m_level == 0
+       ? g_concurrency
+       : 0
+       ;
+}
+
+ThreadExecutionResource ThreadExecutionResource::partition( int i ) const noexcept
+{
+  return m_pimpl->m_level == 0
+       ? ThreadExecutionResource{ &g_leaves[i] }
+       : ThreadExecutionResource{ nullptr }
+       ;
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+
+bool this_thread_set_binding( const ThreadExecutionResource res ) noexcept
+{
+
+  #if !defined( _OPENMP )
+    int err = 0;
+    if (res.get_impl()->m_level == 0) {
+      err = sched_setaffinity( 0
+                             , sizeof(cpu_set_t)
+                             , &g_process
+                             );
+    } else {
+      cpu_set_t tmp;
+      CPU_ZERO( &tmp );
+      CPU_SET( res.get_impl()->m_global_id, &tmp );
+      err = sched_setaffinity( 0
+                             , sizeof(cpu_set_t)
+                             , &tmp
+                             );
+    }
+    return !err;
+  #else
+    return false;
+  #endif
+}
+
+ThreadExecutionResource this_thread_get_bind() noexcept
+{
+  cpu_set_t tmp;
+  CPU_ZERO( &tmp );
+  const int err = sched_getaffinity( 0
+                                   , sizeof( cpu_set_t )
+                                   , & tmp
+                                   );
+
+  const int count = CPU_COUNT( &tmp );
+  if ( err || count > 1 || count <= 0 ) {
+    return ThreadExecutionResource{ &g_root };
+  }
+
+  int gid = 0;
+  for (; gid<g_size; ++gid) {
+    if ( CPU_ISSET( gid, &tmp ) ) break;
+  }
+
+  int i = 0;
+  for (; i<g_concurrency; ++i) {
+    if ( gid == g_leaves[i].m_global_id ) break;
+  }
+
+  return ThreadExecutionResource{ &g_leaves[i] };
+}
+
+ThreadExecutionResource this_thread_get_resource() noexcept
+{
+  const int gid = sched_getcpu();
+
+  if (gid < 0 || gid > g_size ) {
+    return ThreadExecutionResource{ &g_root };
+  }
+
+  int i = 0;
+  for (; i<g_concurrency; ++i) {
+    if ( gid == g_leaves[i].m_global_id ) break;
+  }
+
+  return ThreadExecutionResource{ &g_leaves[i] };
+}
+
+std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource res )
+{
+  if ( res ) {
+    if (res.get_impl()->m_level == 0) {
+      out << "{ root : " << g_concurrency << " }";
+    }
+    else {
+      out << "{ root." << res.get_impl()->m_global_id << " : 1 }";
+    }
+  }
+  else {
+    out << "{ null : 0 }";
+  }
+  return out;
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+}} // namespace Kokkos::Impl
+
+
 #else
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-#if defined( _GNU_SOURCE ) && !defined( _OPENMP )
-  #include <unistd.h>
-#endif
-
 #include <iostream>
+
+#if defined( _GNU_SOURCE )
+#include <unistd.h>
+#endif
 
 namespace Kokkos { namespace Impl {
 
@@ -465,6 +710,11 @@ void ThreadExecutionResource::finalize() noexcept
 ThreadExecutionResource ThreadExecutionResource::member_of() const noexcept
 {
   return ThreadExecutionResource{ nullptr };
+}
+
+int ThreadExecutionResource::global_id() const noexcept
+{
+  return 0;
 }
 
 int ThreadExecutionResource::concurrency() const noexcept

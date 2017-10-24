@@ -78,6 +78,8 @@ public:
 
   //----------------------------------------------------------------------------
 
+  int global_id() const noexcept;
+
   int concurrency() const noexcept;
 
   ThreadExecutionResource member_of() const noexcept;
