@@ -45,6 +45,10 @@
 
 #include <impl/Kokkos_ThreadExecutionResource.hpp>
 
+#if defined( _OPENMP )
+#include <omp.h>
+#endif
+
 #if defined( KOKKOS_ENABLE_HWLOC )
 
 #include <new>
@@ -184,7 +188,29 @@ void initialize() noexcept
     hwloc_topology_init( & g_topology );
     hwloc_topology_load( g_topology );
     g_process = hwloc_bitmap_alloc();
-    const int err = hwloc_get_cpubind( g_topology, g_process, HWLOC_CPUBIND_PROCESS );
+    #if !defined( _OPENMP )
+      const int err = hwloc_get_cpubind( g_topology, g_process, HWLOC_CPUBIND_PROCESS );
+    #else
+      int err = 0;
+      int num_procs = omp_get_num_procs();
+      #pragma omp parallel num_threads(num_procs)
+      {
+
+        hwloc_cpuset_t tmp = hwloc_bitmap_alloc();
+        const int tmp_err = hwloc_get_cpubind( g_topology, tmp, HWLOC_CPUBIND_PROCESS );
+
+        #pragma omp atomic
+        err |= tmp_err;
+
+        #pragma omp critical
+        {
+          hwloc_bitmap_or( g_process, g_process, tmp );
+        }
+
+        hwloc_bitmap_free( tmp );
+      }
+    #endif
+
 
     if (err) {
       // assume entire node if unable to detect process binding
@@ -501,7 +527,8 @@ void initialize() noexcept
     }
     else {
       #if defined( _OPENMP )
-        #pragma omp parallel
+        int num_procs = omp_get_num_procs();
+        #pragma omp parallel num_threads(num_procs)
         {
           cpu_set_t tmp;
           sched_getaffinity( 0
@@ -762,7 +789,8 @@ void initialize() noexcept
 {
   if ( g_root.m_concurrency == 0 ) {
   #if defined( _OPENMP )
-    #pragma omp parallel
+    int num_procs = omp_get_num_procs();
+    #pragma omp parallel num_threads(num_procs)
     {
       #pragma omp atomic
       ++g_root.m_concurrency;

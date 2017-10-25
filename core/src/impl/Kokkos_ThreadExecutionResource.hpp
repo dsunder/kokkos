@@ -62,6 +62,8 @@ public:
 
   static ThreadExecutionResource leaf( int i ) noexcept;
 
+  static int total_concurrency() noexcept { return root().concurrency(); }
+
   //----------------------------------------------------------------------------
 
   explicit operator bool() const noexcept
