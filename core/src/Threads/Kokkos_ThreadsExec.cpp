@@ -53,6 +53,8 @@
 
 #include <Kokkos_Core.hpp>
 
+#include <Kokkos_hwloc.hpp>
+
 #include <impl/Kokkos_Error.hpp>
 #include <impl/Kokkos_CPUDiscovery.hpp>
 #include <impl/Kokkos_Profiling_Interface.hpp>

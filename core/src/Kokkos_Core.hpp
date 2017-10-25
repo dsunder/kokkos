@@ -49,6 +49,8 @@
 
 #include <Kokkos_Core_fwd.hpp>
 
+#include <impl/Kokkos_ThreadExecutionResource.hpp>
+
 #if defined( KOKKOS_ENABLE_SERIAL )
 #include <Kokkos_Serial.hpp>
 #endif
@@ -88,7 +90,6 @@
 
 #include <Kokkos_Complex.hpp>
 
-#include <impl/Kokkos_ThreadExecutionResource.hpp>
 
 #include <iosfwd>
 

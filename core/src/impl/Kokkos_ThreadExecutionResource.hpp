@@ -109,7 +109,7 @@ private:
   Impl const * m_pimpl{nullptr};
 };
 
-//------------------------------------------------------------------------------
+
 //------------------------------------------------------------------------------
 
 bool this_thread_set_binding( const ThreadExecutionResource ) noexcept;
@@ -117,6 +117,8 @@ ThreadExecutionResource this_thread_get_binding() noexcept;
 ThreadExecutionResource this_thread_get_resource() noexcept;
 
 std::ostream & operator <<( std::ostream & out, const ThreadExecutionResource );
+
+}} // namespace Kokkos::Impl
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -130,6 +132,12 @@ constexpr bool available() { return true; }
 constexpr bool available() { return false; }
 #endif
 
+#if defined( KOKKOS_ENABLE_HWLOC ) && !defined( __APPLE__ )
+constexpr bool can_bind_threads() { return true; }
+#else
+constexpr bool can_bind_threads() { return false; }
+#endif
+
 // These functions assume symmetry and will return incorrect results for
 // non-symmetric process bindings
 unsigned get_available_numa_count()       noexcept;
@@ -141,6 +149,5 @@ unsigned get_available_threads_per_core() noexcept;
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-}} // namespace Kokkos::Impl
 
 #endif // KOKKOS_THREAD_EXECUTION_RESOURCE_HPP

@@ -44,44 +44,9 @@
 #ifndef KOKKOS_HWLOC_HPP
 #define KOKKOS_HWLOC_HPP
 
+#include <impl/Kokkos_ThreadExecutionResource.hpp>
+
 #include <utility>
-
-namespace Kokkos {
-
-/** \brief  Minimal subset of logical 'hwloc' functionality available
- *          from http://www.open-mpi.org/projects/hwloc/.
- *
- *  The calls are NOT thread safe in order to avoid mutexes,
- *  memory allocations, or other actions which could give the
- *  runtime system an opportunity to migrate the threads or
- *  touch allocated memory during the function calls.
- *
- *  All calls to these functions should be performed by a thread
- *  when it has guaranteed exclusive access; e.g., for OpenMP
- *  within a 'critical' region.
- */
-namespace hwloc {
-
-/** \brief  Query if hwloc is available */
-bool available();
-
-/** \brief  Query number of available NUMA regions.
- *          This will be less than the hardware capacity
- *          if the MPI process is pinned to a NUMA region.
- */
-unsigned get_available_numa_count();
-
-/** \brief  Query number of available cores per NUMA regions.
- *          This will be less than the hardware capacity
- *          if the MPI process is pinned to a set of cores.
- */
-unsigned get_available_cores_per_numa();
-
-/** \brief  Query number of available "hard" threads per core; i.e., hyperthreads */
-unsigned get_available_threads_per_core();
-
-} /* namespace hwloc */
-} /* namespace Kokkos */
 
 //----------------------------------------------------------------------------
 //----------------------------------------------------------------------------
@@ -120,9 +85,6 @@ std::pair<unsigned,unsigned> get_this_thread_coordinate();
 /** \brief  Bind the current thread to a core. */
 bool bind_this_thread( const std::pair<unsigned,unsigned> );
 
-
-/** \brief Can hwloc bind threads? */
-bool can_bind_threads();
 
 /** \brief  Bind the current thread to one of the cores in the list.
  *          Set that entry to (~0,~0) and return the index.
