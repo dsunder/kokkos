@@ -54,9 +54,6 @@ namespace Kokkos { namespace Impl {
 class ThreadExecutionResource
 {
 public:
-  static void initialize() noexcept;
-  static void finalize()   noexcept;
-
   //----------------------------------------------------------------------------
 
   static ThreadExecutionResource root() noexcept;
@@ -124,6 +121,25 @@ std::ostream & operator <<( std::ostream & out, const ThreadExecutionResource );
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
+// Deprecated APIs
+namespace Kokkos { namespace hwloc {
+
+#if defined( KOKKOS_ENABLE_HWLOC )
+constexpr bool available() { return true; }
+#else
+constexpr bool available() { return false; }
+#endif
+
+// These functions assume symmetry and will return incorrect results for
+// non-symmetric process bindings
+unsigned get_available_numa_count()       noexcept;
+unsigned get_available_cores_per_numa()   noexcept;
+unsigned get_available_threads_per_core() noexcept;
+
+}} // namespace Kokkos::hwloc
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 
 }} // namespace Kokkos::Impl
 

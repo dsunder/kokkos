@@ -81,6 +81,7 @@ hwloc_cpuset_t   g_process    = nullptr;
 ThreadExecutionResource::Impl *  g_root   = nullptr;
 std::vector<ThreadExecutionResource::Impl const *> g_leaves;
 
+
 //------------------------------------------------------------------------------
 
 bool intersect_process( hwloc_obj_t obj, hwloc_bitmap_t scratch ) noexcept
@@ -177,64 +178,48 @@ void destroy_tree( ThreadExecutionResource::Impl * impl ) noexcept
   }
 }
 
-//------------------------------------------------------------------------------
-} // namespace
-
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-
-ThreadExecutionResource ThreadExecutionResource::root() noexcept
+void initialize() noexcept
 {
-  return ThreadExecutionResource{g_root};
-}
+  if ( !g_topology ) {
+    hwloc_topology_init( & g_topology );
+    hwloc_topology_load( g_topology );
+    g_process = hwloc_bitmap_alloc();
+    const int err = hwloc_get_cpubind( g_topology, g_process, HWLOC_CPUBIND_PROCESS );
 
-ThreadExecutionResource ThreadExecutionResource::leaf( int i ) noexcept
-{
-  return ThreadExecutionResource{ g_leaves[i] };
-}
+    if (err) {
+      // assume entire node if unable to detect process binding
+      const int num_pu = hwloc_get_nbobjs_by_type( g_topology, HWLOC_OBJ_PU );
+      hwloc_bitmap_set_range( g_process, 0, num_pu -1 );
+    }
 
-int ThreadExecutionResource::num_leaves() noexcept
-{
-  return static_cast<int>(g_leaves.size());
-}
+    int num_leaves = hwloc_bitmap_weight( g_process );
 
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
+    if ( num_leaves == 0 ) {
+      num_leaves = hwloc_get_nbobjs_by_type( g_topology, HWLOC_OBJ_PU );
+      hwloc_bitmap_set_range( g_process, 0, num_leaves-1);
+    }
 
-void ThreadExecutionResource::initialize() noexcept
-{
-  hwloc_topology_init( & g_topology );
-  hwloc_topology_load( g_topology );
-  g_process = hwloc_bitmap_alloc();
-  hwloc_get_cpubind( g_topology, g_process, HWLOC_CPUBIND_PROCESS );
+    hwloc_cpuset_t scratch = hwloc_bitmap_alloc();
 
-  int num_leaves = hwloc_bitmap_weight( g_process );
+    g_root = new (std::nothrow) ThreadExecutionResource::Impl;
 
-  if ( num_leaves == 0 ) {
-    num_leaves = hwloc_get_nbobjs_by_type( g_topology, HWLOC_OBJ_PU );
-    hwloc_bitmap_set_range( g_process, 0, num_leaves-1);
+    initialize_tree( g_root
+                   , nullptr
+                   , hwloc_get_root_obj( g_topology )
+                   , scratch
+                   , 0
+                   , 0
+                   , 0
+                   );
+
+    std::sort( g_leaves.begin(), g_leaves.end()
+             , []( ThreadExecutionResource::Impl const * a, ThreadExecutionResource::Impl const * b ) {
+                return a->m_obj->logical_index < b->m_obj->logical_index;
+             });
   }
-
-  hwloc_cpuset_t scratch = hwloc_bitmap_alloc();
-
-  g_root = new (std::nothrow) Impl;
-
-  initialize_tree( g_root
-                 , nullptr
-                 , hwloc_get_root_obj( g_topology )
-                 , scratch
-                 , 0
-                 , 0
-                 , 0
-                 );
-
-  std::sort( g_leaves.begin(), g_leaves.end()
-           , []( Impl const * a, Impl const * b ) {
-              return a->m_obj->logical_index < b->m_obj->logical_index;
-           });
 }
 
-void ThreadExecutionResource::finalize() noexcept
+void finalize() noexcept
 {
   if (g_topology) {
     // rebind master thread to entire process
@@ -255,28 +240,89 @@ void ThreadExecutionResource::finalize() noexcept
   }
 }
 
+class Sentinal
+{
+public:
+  Sentinal() noexcept
+  {
+    initialize();
+
+  }
+
+  ~Sentinal() noexcept
+  {
+    finalize();
+  }
+};
+
+void sentinal() noexcept
+{
+  static const Sentinal s;
+}
+
+//------------------------------------------------------------------------------
+} // namespace
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+ThreadExecutionResource ThreadExecutionResource::root() noexcept
+{
+  sentinal();
+
+  return ThreadExecutionResource{g_root};
+}
+
+ThreadExecutionResource ThreadExecutionResource::leaf( int i ) noexcept
+{
+  sentinal();
+
+  return ThreadExecutionResource{ g_leaves[i] };
+}
+
+int ThreadExecutionResource::num_leaves() noexcept
+{
+  sentinal();
+
+  return static_cast<int>(g_leaves.size());
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+
 ThreadExecutionResource ThreadExecutionResource::member_of() const noexcept
 {
+  sentinal();
+
   return ThreadExecutionResource{ m_pimpl->m_member_of };
 }
 
 int ThreadExecutionResource::global_id() const noexcept
 {
+  sentinal();
+
   return m_pimpl->m_global_id;
 }
 
 int ThreadExecutionResource::concurrency() const noexcept
 {
+  sentinal();
+
   return m_pimpl->m_concurrency;
 }
 
 int ThreadExecutionResource::num_partitions() const noexcept
 {
+  sentinal();
+
   return m_pimpl->m_num_partitions;
 }
 
 ThreadExecutionResource ThreadExecutionResource::partition( int i ) const noexcept
 {
+  sentinal();
+
   return ThreadExecutionResource{ m_pimpl->m_partitions + i };
 }
 
@@ -313,6 +359,8 @@ const ThreadExecutionResource::Impl * get_impl( ThreadExecutionResource::Impl co
 bool this_thread_set_binding( const ThreadExecutionResource res ) noexcept
 {
 
+  sentinal();
+
   #if !defined( _OPENMP )
     const int err = hwloc_set_cpubind( g_topology
                                      , res.get_impl()->m_cpuset
@@ -326,6 +374,8 @@ bool this_thread_set_binding( const ThreadExecutionResource res ) noexcept
 
 ThreadExecutionResource this_thread_get_bind() noexcept
 {
+  sentinal();
+
   hwloc_cpuset_t scratch = hwloc_bitmap_alloc();
   const int err = hwloc_get_cpubind( g_topology
                                    , scratch
@@ -347,6 +397,8 @@ ThreadExecutionResource this_thread_get_bind() noexcept
 
 ThreadExecutionResource this_thread_get_resource() noexcept
 {
+  sentinal();
+
   hwloc_cpuset_t scratch = hwloc_bitmap_alloc();
 
   const int err =hwloc_get_last_cpu_location( g_topology
@@ -390,6 +442,8 @@ std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource::Im
 
 std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource res )
 {
+  sentinal();
+
   if (res) {
     out << "{ " << res.get_impl() << " : " << res.concurrency() << " }";
   }
@@ -435,35 +489,12 @@ std::vector< ThreadExecutionResource::Impl > g_leaves;
 
 ThreadExecutionResource::Impl g_root {};
 
-} // namespace
-
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-
-ThreadExecutionResource ThreadExecutionResource::root() noexcept
-{
-  return ThreadExecutionResource{&g_root};
-}
-
-ThreadExecutionResource ThreadExecutionResource::leaf( int i ) noexcept
-{
-  return ThreadExecutionResource{ &g_leaves[i] };
-}
-
-int ThreadExecutionResource::num_leaves() noexcept
-{
-  return g_concurrency;
-}
-
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-
-void ThreadExecutionResource::initialize() noexcept
+void initialize() noexcept
 {
   if (g_size == 0) {
     CPU_ZERO( &g_process );
 
-    g_size = sysconf(_SC_NPROCESSORS_ONLN);
+    g_size = sysconf( _SC_NPROCESSORS_ONLN );
 
     if (g_size <= 0) {
       g_size = 0;
@@ -503,7 +534,7 @@ void ThreadExecutionResource::initialize() noexcept
   }
 }
 
-void ThreadExecutionResource::finalize() noexcept
+void finalize() noexcept
 {
   if (g_size > 0) {
     g_size = 0;
@@ -512,8 +543,59 @@ void ThreadExecutionResource::finalize() noexcept
   }
 }
 
+class Sentinal
+{
+public:
+  Sentinal() noexcept
+  {
+    initialize();
+
+  }
+
+  ~Sentinal() noexcept
+  {
+    finalize();
+  }
+};
+
+void sentinal() noexcept
+{
+  static const Sentinal s;
+}
+
+} // namespace
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+ThreadExecutionResource ThreadExecutionResource::root() noexcept
+{
+  sentinal();
+
+  return ThreadExecutionResource{&g_root};
+}
+
+ThreadExecutionResource ThreadExecutionResource::leaf( int i ) noexcept
+{
+  sentinal();
+
+  return ThreadExecutionResource{ &g_leaves[i] };
+}
+
+int ThreadExecutionResource::num_leaves() noexcept
+{
+  sentinal();
+
+  return g_concurrency;
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+
 ThreadExecutionResource ThreadExecutionResource::member_of() const noexcept
 {
+  sentinal();
 
   return m_pimpl->m_level == 0
        ? ThreadExecutionResource{ nullptr }
@@ -528,6 +610,8 @@ int ThreadExecutionResource::global_id() const noexcept
 
 int ThreadExecutionResource::concurrency() const noexcept
 {
+  sentinal();
+
   return m_pimpl->m_level == 0
        ? g_concurrency
        : 1
@@ -544,6 +628,8 @@ int ThreadExecutionResource::num_partitions() const noexcept
 
 ThreadExecutionResource ThreadExecutionResource::partition( int i ) const noexcept
 {
+  sentinal();
+
   return m_pimpl->m_level == 0
        ? ThreadExecutionResource{ &g_leaves[i] }
        : ThreadExecutionResource{ nullptr }
@@ -556,6 +642,7 @@ ThreadExecutionResource ThreadExecutionResource::partition( int i ) const noexce
 
 bool this_thread_set_binding( const ThreadExecutionResource res ) noexcept
 {
+  sentinal();
 
   #if !defined( _OPENMP )
     int err = 0;
@@ -581,6 +668,8 @@ bool this_thread_set_binding( const ThreadExecutionResource res ) noexcept
 
 ThreadExecutionResource this_thread_get_bind() noexcept
 {
+  sentinal();
+
   cpu_set_t tmp;
   CPU_ZERO( &tmp );
   const int err = sched_getaffinity( 0
@@ -608,6 +697,8 @@ ThreadExecutionResource this_thread_get_bind() noexcept
 
 ThreadExecutionResource this_thread_get_resource() noexcept
 {
+  sentinal();
+
   const int gid = sched_getcpu();
 
   if (gid < 0 || gid > g_size ) {
@@ -624,6 +715,8 @@ ThreadExecutionResource this_thread_get_resource() noexcept
 
 std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource res )
 {
+  sentinal();
+
   if ( res ) {
     if (res.get_impl()->m_level == 0) {
       out << "{ root : " << g_concurrency << " }";
@@ -664,32 +757,11 @@ struct ThreadExecutionResource::Impl
 
 namespace {
 ThreadExecutionResource::Impl g_root;
-}
 
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-
-ThreadExecutionResource ThreadExecutionResource::root() noexcept
+void initialize() noexcept
 {
-  return ThreadExecutionResource{&g_root};
-}
-
-ThreadExecutionResource ThreadExecutionResource::leaf( int ) noexcept
-{
-  return ThreadExecutionResource{ &g_root };
-}
-
-int ThreadExecutionResource::num_leaves() noexcept
-{
-  return 1;
-}
-
-//------------------------------------------------------------------------------
-
-void ThreadExecutionResource::initialize() noexcept
-{
+  if ( g_root.m_concurrency == 0 ) {
   #if defined( _OPENMP )
-    g_root.m_concurrency = 0;
     #pragma omp parallel
     {
       #pragma omp atomic
@@ -700,35 +772,86 @@ void ThreadExecutionResource::initialize() noexcept
   #else
     g_root.m_concurrency = 1;
   #endif
+  }
 }
 
-void ThreadExecutionResource::finalize() noexcept
+void finalize() noexcept
 {
   g_root.m_concurrency = 0;
 }
 
+class Sentinal
+{
+public:
+  Sentinal() noexcept
+  {
+    initialize();
+
+  }
+
+  ~Sentinal() noexcept
+  {
+    finalize();
+  }
+};
+
+void sentinal() noexcept
+{
+  static const Sentinal s;
+}
+
+} // namespace
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+ThreadExecutionResource ThreadExecutionResource::root() noexcept
+{
+  sentinal();
+  return ThreadExecutionResource{&g_root};
+}
+
+ThreadExecutionResource ThreadExecutionResource::leaf( int ) noexcept
+{
+  sentinal();
+  return ThreadExecutionResource{ &g_root };
+}
+
+int ThreadExecutionResource::num_leaves() noexcept
+{
+  sentinal();
+  return 1;
+}
+
+//------------------------------------------------------------------------------
+
 ThreadExecutionResource ThreadExecutionResource::member_of() const noexcept
 {
+  sentinal();
   return ThreadExecutionResource{ nullptr };
 }
 
 int ThreadExecutionResource::global_id() const noexcept
 {
+  sentinal();
   return 0;
 }
 
 int ThreadExecutionResource::concurrency() const noexcept
 {
+  sentinal();
   return g_root.m_concurrency;
 }
 
 int ThreadExecutionResource::num_partitions() const noexcept
 {
+  sentinal();
   return 0;
 }
 
 ThreadExecutionResource ThreadExecutionResource::partition( int i ) const noexcept
 {
+  sentinal();
   return ThreadExecutionResource{ nullptr };
 }
 
@@ -738,20 +861,105 @@ bool this_thread_set_binding( const ThreadExecutionResource res ) noexcept
 { return false; }
 
 ThreadExecutionResource this_thread_get_bind() noexcept
-{ return ThreadExecutionResource{&g_root}; }
+{
+  sentinal();
+  return ThreadExecutionResource{&g_root};
+}
 
 ThreadExecutionResource this_thread_get_resource() noexcept
-{ return ThreadExecutionResource{&g_root}; }
+{
+  sentinal();
+  return ThreadExecutionResource{&g_root};
+}
 
 std::ostream & operator<<( std::ostream & out, const ThreadExecutionResource res )
 {
+  sentinal();
   out << "{ root : " << g_root.m_concurrency << " }";
   return out;
 }
 
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-
 }} // namespace Kokkos::Impl
 
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
 #endif
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+// Deprecated APIs
+
+// These functions assume symmetry and will return incorrect results for
+// non-symmetric process bindings
+namespace Kokkos { namespace hwloc {
+
+#if defined( KOKKOS_ENABLE_HWLOC )
+
+unsigned get_available_numa_count() noexcept
+{
+  Kokkos::Impl::sentinal();
+  const int num_numa =
+    hwloc_get_nbobjs_inside_cpuset_by_type( Kokkos::Impl::g_topology
+                                          , Kokkos::Impl::g_process
+                                          , HWLOC_OBJ_NUMANODE
+                                          );
+
+  return num_numa;
+}
+
+unsigned get_available_cores_per_numa() noexcept
+{
+  Kokkos::Impl::sentinal();
+  const int num_cores =
+    hwloc_get_nbobjs_inside_cpuset_by_type( Kokkos::Impl::g_topology
+                                          , Kokkos::Impl::g_process
+                                          , HWLOC_OBJ_CORE
+                                          );
+
+  return num_cores / get_available_numa_count();
+}
+
+unsigned get_available_threads_per_core() noexcept
+{
+  Kokkos::Impl::sentinal();
+  const int num_cores =
+    hwloc_get_nbobjs_inside_cpuset_by_type( Kokkos::Impl::g_topology
+                                          , Kokkos::Impl::g_process
+                                          , HWLOC_OBJ_CORE
+                                          );
+
+  const int num_pus =
+    hwloc_get_nbobjs_inside_cpuset_by_type( Kokkos::Impl::g_topology
+                                          , Kokkos::Impl::g_process
+                                          , HWLOC_OBJ_PU
+                                          );
+
+  return num_pus / num_cores;
+}
+
+#else
+
+unsigned get_available_numa_count() noexcept
+{
+  Kokkos::Impl::sentinal();
+  return 1;
+}
+
+unsigned get_available_cores_per_numa() noexcept
+{
+  Kokkos::Impl::sentinal();
+  return Kokkos::Impl::ThreadExecutionResource::root().concurrency();
+}
+
+unsigned get_available_threads_per_core() noexcept
+{
+  Kokkos::Impl::sentinal();
+  return 1;
+}
+
+#endif
+
+}} // namespace Kokkos::hwloc
+

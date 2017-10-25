@@ -45,7 +45,7 @@
 
 #include <iostream>
 
-#include <Kokkos_hwloc.hpp>
+#include <Kokkos_Core.hpp>
 
 namespace Test {
 
