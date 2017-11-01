@@ -63,8 +63,6 @@
 #include <Kokkos_Layout.hpp>
 #include <impl/Kokkos_Tags.hpp>
 
-#include <vector>
-
 /*--------------------------------------------------------------------------*/
 
 namespace Kokkos {
@@ -93,30 +91,18 @@ public:
   using size_type            = memory_space::size_type;
   using scratch_memory_space = ScratchMemorySpace< OpenMP >;
 
-  /// \brief Get a handle to the default execution space instance
-  inline
-  OpenMP() noexcept;
+  static constexpr const char* name() noexcept { return "OpenMP"; }
 
-  // Using omp_get_max_threads(); is problematic
-  // On Intel (essentially an initial call to the OpenMP runtime
-  // without a parallel region before will set a process mask for a single core
-  // The runtime will than bind threads for a parallel region to other cores on the
-  // entering the first parallel region and make the process mask the aggregate of
-  // the thread masks. The intend seems to be to make serial code run fast, if you
-  // compile with OpenMP enabled but don't actually use parallel regions or so
-  // static int omp_max_threads = omp_get_max_threads();
-  static int get_current_max_threads() noexcept;
+  OpenMP() noexcept = default;
 
   /// \brief Initialize the default execution space
   ///
-  /// if ( thread_count == -1 )
-  ///   then use the number of threads that openmp defaults to
-  /// if ( thread_count == 0 && Kokkos::hwlow_available() )
-  ///   then use hwloc to choose the number of threads and change
-  ///   the default number of threads
-  /// if ( thread_count > 0 )
-  ///   then force openmp to use the given number of threads and change
-  ///   the default number of threads
+  /// if ( thread_count <= 0 )
+  ///   use omp_get_max_threads()
+  /// if ( 0 < thread_count < omp_get_num_procs() )
+  ///   use the given number of threads
+  /// if ( thread_count > omp_get_num_procs()
+  ///   use omp_get_num_procs threads
   static void initialize( int thread_count = -1 );
 
   /// \brief Free any resources being consumed by the default execution space
@@ -128,36 +114,23 @@ public:
   /// \brief Print configuration information to the given output stream.
   static void print_configuration( std::ostream & , const bool verbose = false );
 
-  /// \brief is the instance running a parallel algorithm
-  inline
-  static bool in_parallel( OpenMP const& = OpenMP() ) noexcept;
+  /// \brief is the instance asynchronous
+  static constexpr bool is_asynchronous( OpenMP const& = OpenMP() ) noexcept { return false };
 
   /// \brief Wait until all dispatched functors complete on the given instance
-  ///
-  ///  This is a no-op on OpenMP
-  inline
-  static void fence( OpenMP const& = OpenMP() ) noexcept;
+  inline static void fence( OpenMP const& = OpenMP() ) noexcept {};
 
-  /// \brief Does the given instance return immediately after launching
-  /// a parallel algorithm
-  ///
-  /// This always returns false on OpenMP
-  inline
-  static bool is_asynchronous( OpenMP const& = OpenMP() ) noexcept;
+  /// \brief is the instance running a parallel algorithm
+  inline static bool in_parallel( OpenMP const& = OpenMP() ) noexcept;
 
+  /// \brief total number of threads available to the current pool
+  inline static int concurrency() noexcept;
 
-  /// \brief Partition the default instance into new instances without creating
-  ///  new masters
-  ///
-  /// This is a no-op on OpenMP since the default instance cannot be partitioned
-  /// without promoting other threads to 'master'
-  static std::vector<OpenMP> partition(...);
+  /// \brief total number of threads in the current running parallel algorithm
+  inline static int num_threads() noexcept;
 
-  /// Non-default instances should be ref-counted so that when the last
-  /// is destroyed the instance resources are released
-  ///
-  /// This is a no-op on OpenMP since a non default instance cannot be created
-  static OpenMP create_instance(...);
+  /// \brief rank of the thread in the current running parallel algorithm
+  inline static int thread_rank() noexcept;
 
   /// \brief Partition the default instance and call 'f' on each new 'master' thread
   ///
@@ -169,13 +142,6 @@ public:
                               , int requested_partition_size = 0
                               );
 
-  inline
-  static int thread_pool_size() noexcept;
-
-  /** \brief  The rank of the executing thread in this thread pool */
-  KOKKOS_INLINE_FUNCTION
-  static int thread_pool_rank() noexcept;
-
 #if !defined( KOKKOS_DISABLE_DEPRECATED )
   /// \brief Initialize the default execution space
   static void initialize( int thread_count,
@@ -183,13 +149,15 @@ public:
                           int use_cores_per_numa = 0);
 
   inline
-  static int thread_pool_size( int depth );
+  static int thread_pool_size( int depth = 0 );
+
+  /// \brief  The rank of the executing thread in this thread pool
+  KOKKOS_INLINE_FUNCTION
+  static int thread_pool_rank() noexcept;
+
 
   static void sleep() {};
   static void wake() {};
-
-  // use UniqueToken
-  static int concurrency();
 
   // use UniqueToken
   inline
@@ -200,7 +168,6 @@ public:
   static int hardware_thread_id() noexcept;
 #endif
 
-  static constexpr const char* name() noexcept { return "OpenMP"; }
 };
 
 } // namespace Kokkos

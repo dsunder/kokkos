@@ -61,10 +61,15 @@
 namespace Kokkos {
 namespace Impl {
 
+__thread Impl::OpenMPExec * t_openmp_instance = nullptr;
+
 int g_openmp_max_threads = -1;
 
-__thread int t_openmp_hardware_id = -1;
-__thread Impl::OpenMPExec * t_openmp_instance = nullptr;
+int t_openmp_hardware_id = -1;
+#pragma omp threadprivate(t_openmp_hardware_id);
+
+int thread_limit() noexcept { return  g_openmp_max_threads; }
+int tid()          noexcept { return t_openmp_hardware_id; }
 
 void OpenMPExec::validate_partition( const int nthreads
                                    , int & num_partitions
@@ -76,19 +81,8 @@ void OpenMPExec::validate_partition( const int nthreads
     partition_size = 1;
   }
   else if( num_partitions < 1 && partition_size < 1) {
-    int idle = nthreads;
-    for (int np = 2; np <= nthreads ; ++np) {
-      for (int ps = 1; ps <= nthreads/np; ++ps) {
-        if (nthreads - np*ps < idle) {
-          idle = nthreads - np*ps;
-          num_partitions = np;
-          partition_size = ps;
-        }
-        if (idle == 0) {
-          break;
-        }
-      }
-    }
+    num_partitions = nthreads;
+    partition_size = 1;
   }
   else if( num_partitions < 1 && partition_size > 0 ) {
     if ( partition_size <= nthreads ) {
@@ -456,10 +450,6 @@ OpenMP OpenMP::create_instance(...) { return OpenMP(); }
 
 
 #if !defined( KOKKOS_DISABLE_DEPRECATED )
-
-int OpenMP::concurrency() {
-  return Impl::g_openmp_max_threads;
-}
 
 void OpenMP::initialize( int thread_count , int, int )
 {

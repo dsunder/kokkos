@@ -42,25 +42,28 @@
 */
 
 #include <Kokkos_Macros.hpp>
-#if defined( KOKKOS_ENABLE_THREADS )
+#include <impl/Kokkos_ThreadPrivate.hpp>
 
 namespace Kokkos { namespace Impl {
 
-  #if defined( KOKKOS_ENABLE_STDTHREADS )
-    thread_local int t_pool_rank{0};
-    thread_local int t_pool_size{0};
-    thread_local int t_pool_level{0};
-    thread_local int t_pool_concurrency{0};
-  #else
-    __thread int t_pool_rank{0};
-    __thread int t_pool_size{0};
-    __thread int t_pool_level{0};
-    __thread int t_pool_concurrency{0};
+  #if defined( KOKKOS_ENABLE_OPENMP )
+
+    HostThreadLocal t_host_local{};
+    #pragma omp threadprivate(t_host_in_parallel)
+
+  #elif defined( KOKKOS_ENABLE_STDTHREADS )
+
+    thread_local HostThreadLocal t_host_local{};
+
+  #elif defined( KOKKOS_ENABLE_THREADS )
+
+    __thread HostThreadLocal t_host_local{};
+
+  #elif defined( KOKKOS_ENABLE_SERIAL )
+
+    HostThreadLocal g_host_local{};
+
   #endif
 
 }} // namespace Kokkos::Impl
-
-#else
-void KOKKOS_CORE_SRC_IMPL_THREAD_PRIVATE_PREVENT_LINK_ERROR() {}
-#endif
 

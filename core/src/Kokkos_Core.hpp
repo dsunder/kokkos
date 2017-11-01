@@ -50,6 +50,7 @@
 #include <Kokkos_Core_fwd.hpp>
 
 #include <impl/Kokkos_ThreadExecutionResource.hpp>
+#include <impl/Kokkos_ThreadPrivate.hpp>
 
 #if defined( KOKKOS_ENABLE_SERIAL )
 #include <Kokkos_Serial.hpp>
