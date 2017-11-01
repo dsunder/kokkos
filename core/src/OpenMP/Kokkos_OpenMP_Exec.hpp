@@ -73,8 +73,7 @@ namespace Kokkos { namespace Impl {
 
 class OpenMPExec;
 
-extern int g_openmp_hardware_max_threads;
-
+extern int g_openmp_max_threads;
 extern __thread int t_openmp_hardware_id;
 extern __thread OpenMPExec * t_openmp_instance;
 
@@ -194,7 +193,11 @@ void OpenMP::partition_master( F const& f
 
     OpenMP::memory_space space;
 
-    #pragma omp parallel num_threads(num_partitions)
+    #if KOKKOS_OPENMP_VERSION >= 40
+    #pragma omp parallel num_threads( num_partitions ) proc_bind(spread)
+    #else
+    #pragma omp parallel num_threads( num_partitions )
+    #endif
     {
       void * const ptr = space.allocate( sizeof(Exec) );
 
@@ -307,7 +310,7 @@ public:
   int size() const noexcept
     {
       #if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-      return Kokkos::Impl::g_openmp_hardware_max_threads ;
+      return Kokkos::Impl::g_openmp_max_threads ;
       #else
       return 0 ;
       #endif
@@ -318,9 +321,9 @@ public:
   int acquire() const noexcept
     {
       #if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-      return Kokkos::Impl::t_openmp_hardware_id ;
+      return Kokkos::Impl::t_openmp_hardware_id;
       #else
-      return 0 ;
+      return 0;
       #endif
     }
 
@@ -355,7 +358,7 @@ int OpenMP::hardware_thread_id() noexcept
 inline
 int OpenMP::max_hardware_threads() noexcept
 {
-  return Impl::g_openmp_hardware_max_threads;
+  return Impl::g_openmp_max_threads;
 }
 
 #endif // KOKKOS_DISABLE_DEPRECATED

@@ -77,7 +77,11 @@ public:
   {
     const int pool_size = OpenMP::thread_pool_size();
 
-    #pragma omp parallel num_threads(pool_size)
+    #if KOKKOS_OPENMP_VERSION >= 40
+    #pragma omp parallel num_threads( pool_size ) proc_bind(spread)
+    #else
+    #pragma omp parallel num_threads( pool_size )
+    #endif
     {
       // Spin until COMPLETED_TOKEN.
       // END_TOKEN indicates no work is currently available.

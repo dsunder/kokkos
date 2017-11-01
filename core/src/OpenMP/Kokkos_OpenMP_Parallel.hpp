@@ -128,7 +128,11 @@ public:
       OpenMPExec::verify_is_master("Kokkos::OpenMP parallel_for");
 
       const int pool_size = OpenMP::thread_pool_size();
-      #pragma omp parallel num_threads(pool_size)
+      #if KOKKOS_OPENMP_VERSION >= 40
+      #pragma omp parallel num_threads( pool_size ) proc_bind(spread)
+      #else
+      #pragma omp parallel num_threads( pool_size )
+      #endif
       {
         HostThreadTeamData & data = *(m_instance->get_thread_data());
 
@@ -192,7 +196,7 @@ private:
 
   inline static
   void
-  exec_range( const MDRangePolicy & mdr_policy 
+  exec_range( const MDRangePolicy & mdr_policy
             , const FunctorType & functor
             , const Member ibeg , const Member iend )
     {
@@ -224,7 +228,11 @@ public:
       OpenMPExec::verify_is_master("Kokkos::OpenMP parallel_for");
 
       const int pool_size = OpenMP::thread_pool_size();
-      #pragma omp parallel num_threads(pool_size)
+      #if KOKKOS_OPENMP_VERSION >= 40
+      #pragma omp parallel num_threads( pool_size ) proc_bind(spread)
+      #else
+      #pragma omp parallel num_threads( pool_size )
+      #endif
       {
         HostThreadTeamData & data = *(m_instance->get_thread_data());
 
@@ -243,7 +251,7 @@ public:
           range = is_dynamic ? data.get_work_stealing_chunk()
                              : data.get_work_partition();
 
-          ParallelFor::exec_range( m_mdr_policy 
+          ParallelFor::exec_range( m_mdr_policy
                                  , m_functor
                                  , range.first  + m_policy.begin()
                                  , range.second + m_policy.begin() );
@@ -351,7 +359,11 @@ public:
                                     );
 
       const int pool_size = OpenMP::thread_pool_size();
-      #pragma omp parallel num_threads(pool_size)
+      #if KOKKOS_OPENMP_VERSION >= 40
+      #pragma omp parallel num_threads( pool_size ) proc_bind(spread)
+      #else
+      #pragma omp parallel num_threads( pool_size )
+      #endif
       {
         HostThreadTeamData & data = *(m_instance->get_thread_data());
 
@@ -464,7 +476,7 @@ private:
   typedef Kokkos::Impl::if_c< std::is_same<InvalidType,ReducerType>::value, FunctorType, ReducerType> ReducerConditional;
   typedef typename ReducerConditional::type ReducerTypeFwd;
 
-  typedef typename ReducerTypeFwd::value_type ValueType; 
+  typedef typename ReducerTypeFwd::value_type ValueType;
 
   typedef Kokkos::Impl::FunctorValueInit<   ReducerTypeFwd, WorkTag > ValueInit ;
   typedef Kokkos::Impl::FunctorValueJoin<   ReducerTypeFwd, WorkTag > ValueJoin ;
@@ -516,7 +528,11 @@ public:
                                     );
 
       const int pool_size = OpenMP::thread_pool_size();
-      #pragma omp parallel num_threads(pool_size)
+      #if KOKKOS_OPENMP_VERSION >= 40
+      #pragma omp parallel num_threads( pool_size ) proc_bind(spread)
+      #else
+      #pragma omp parallel num_threads( pool_size )
+      #endif
       {
         HostThreadTeamData & data = *(m_instance->get_thread_data());
 
@@ -686,7 +702,11 @@ public:
                                     );
 
       const int pool_size = OpenMP::thread_pool_size();
-      #pragma omp parallel num_threads(pool_size)
+      #if KOKKOS_OPENMP_VERSION >= 40
+      #pragma omp parallel num_threads( pool_size ) proc_bind(spread)
+      #else
+      #pragma omp parallel num_threads( pool_size )
+      #endif
       {
         HostThreadTeamData & data = *(m_instance->get_thread_data());
 
@@ -842,7 +862,11 @@ public:
                                     , thread_local_size );
 
       const int pool_size = OpenMP::thread_pool_size();
-      #pragma omp parallel num_threads(pool_size)
+      #if KOKKOS_OPENMP_VERSION >= 40
+      #pragma omp parallel num_threads( pool_size ) proc_bind(spread)
+      #else
+      #pragma omp parallel num_threads( pool_size )
+      #endif
       {
         HostThreadTeamData & data = *(m_instance->get_thread_data());
 
@@ -1003,7 +1027,11 @@ public:
                                     , thread_local_size );
 
       const int pool_size = OpenMP::thread_pool_size();
-      #pragma omp parallel num_threads(pool_size)
+      #if KOKKOS_OPENMP_VERSION >= 40
+      #pragma omp parallel num_threads( pool_size ) proc_bind(spread)
+      #else
+      #pragma omp parallel num_threads( pool_size )
+      #endif
       {
         HostThreadTeamData & data = *(m_instance->get_thread_data());
 
