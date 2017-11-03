@@ -56,25 +56,16 @@
 #include <impl/Kokkos_Error.hpp>
 #include <impl/Kokkos_CPUDiscovery.hpp>
 #include <impl/Kokkos_Profiling_Interface.hpp>
+#include <impl/Kokkos_ThreadPrivate.hpp>
 
 
 namespace Kokkos {
 namespace Impl {
 
-__thread Impl::OpenMPExec * t_openmp_instance = nullptr;
-
-int g_openmp_max_threads = -1;
-
-int t_openmp_hardware_id = -1;
-#pragma omp threadprivate(t_openmp_hardware_id);
-
-int thread_limit() noexcept { return  g_openmp_max_threads; }
-int tid()          noexcept { return t_openmp_hardware_id; }
-
-void OpenMPExec::validate_partition( const int nthreads
-                                   , int & num_partitions
-                                   , int & partition_size
-                                  )
+void validate_partition( const int nthreads
+                       , int & num_partitions
+                       , int & partition_size
+                       )
 {
   if (nthreads == 1) {
     num_partitions = 1;

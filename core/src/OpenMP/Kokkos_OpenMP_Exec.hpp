@@ -93,11 +93,6 @@ void resize_thread_data( size_t pool_reduce_bytes
 
 namespace Kokkos {
 
-inline bool OpenMP::is_initialized() noexcept
-{
-  return Impl::t_openmp_instance != nullptr;
-}
-
 inline bool OpenMP::in_parallel( OpenMP const& ) noexcept
 {
   return Impl::host_in_parallel();
@@ -177,8 +172,6 @@ void OpenMP::partition_master( F const& f
     // restore thread locals
     Impl::set_host_partition_data( prev.partition_data );
     Impl::set_host_thread_data( prev.thread_data );
-
-    Impl::t_openmp_instance  = prev_instance;
   }
   else {
     // nested openmp not enabled

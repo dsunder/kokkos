@@ -73,19 +73,20 @@ namespace Kokkos { namespace Impl {
   extern HostThreadLocal t_host_local;
   #pragma omp threadprivate( t_host_local )
 
-  inline bool host_in_parallel()         noexcept { return t_host_local.in_parallel; }
-  inline int  host_pool_concurrency()    noexcept { return !host_in_parallel() ? omp_get_max_threads() : 1; }
-  inline int  host_pool_size()           noexcept { return  host_in_parallel() ? omp_get_num_threads() : 1; }
-  inline int  host_pool_rank()           noexcept { return  host_in_parallel() ? omp_get_thread_num()  : 0; }
-  inline int  host_pool_level()          noexcept { return  omp_get_level(); }
-  inline bool host_reference_tracking()  noexcept { return t_host_local.reference_tracking; }
-  inline int  host_tid()                 noexcept { return t_host_local.tid; }
+  inline bool host_in_parallel()        noexcept { return t_host_local.in_parallel; }
+  inline int  host_pool_concurrency()   noexcept { return !host_in_parallel() ? omp_get_max_threads() : 1; }
+  inline int  host_pool_size()          noexcept { return  host_in_parallel() ? omp_get_num_threads() : 1; }
+  inline int  host_pool_rank()          noexcept { return  host_in_parallel() ? omp_get_thread_num()  : 0; }
+  inline int  host_pool_level()         noexcept { return  omp_get_level(); }
+  inline bool host_reference_tracking() noexcept { return t_host_local.reference_tracking; }
+  inline int  host_tid()                noexcept { return t_host_local.tid; }
+  inline bool host_is_master()          noexcept { return t_host_local.partition_data != nullptr; }
 
   inline void set_host_tid(int t)                 noexcept { t_host_local.tid = t; }
   inline void set_host_reference_tracking(bool b) noexcept { t_host_local.reference_tracking=b; }
   inline void set_host_in_parallel(bool b)        noexcept { t_host_local.in_parallel=b; }
 
-  inline HostThreadTeamData * host_thread_data()     noexcept { return t_host_local.thread_data; }
+  inline HostThreadTeamData *  host_thread_data()    noexcept { return t_host_local.thread_data; }
   inline HostThreadTeamData ** host_partition_data() noexcept { return t_host_local.partition_data; }
 
   inline void set_host_thread_data( HostThreadTeamData * d )     noexcept { t_host_local.thread_data=d; }
@@ -118,6 +119,7 @@ namespace Kokkos { namespace Impl {
   inline int  host_pool_concurrency()   noexcept { return t_host_local.pool_concurrency; }
   inline int  host_pool_level()         noexcept { return t_host_local.pool_level;       }
   inline int  host_tid()                noexcept { return t_host_local.tid; }
+  inline bool host_is_master()          noexcept { return t_host_local.partition_data != nullptr; }
   inline bool host_reference_tracking() noexcept { return t_host_local.reference_tracking; }
 
   inline void set_host_pool_size( int n )         noexcept { t_host_local.pool_size        = n; }
@@ -128,7 +130,7 @@ namespace Kokkos { namespace Impl {
   inline void set_host_in_parallel(bool b)        noexcept { t_host_local.in_parallel=b; }
   inline void set_host_reference_tracking(bool b) noexcept { t_host_local.reference_tracking=b; }
 
-  inline HostThreadTeamData * host_thread_data()     noexcept { return t_host_local.thread_data; }
+  inline HostThreadTeamData *  host_thread_data()    noexcept { return t_host_local.thread_data; }
   inline HostThreadTeamData ** host_partition_data() noexcept { return t_host_local.partition_data; }
 
   inline void set_host_thread_data( HostThreadTeamData * d )     noexcept { t_host_local.thread_data=d; }
@@ -150,6 +152,7 @@ namespace Kokkos { namespace Impl {
   inline constexpr int  host_pool_concurrency() noexcept { return 1; }
   inline constexpr int  host_pool_level()       noexcept { return 0; }
   inline constexpr int  host_tid()              noexcept { return 0; }
+  inline constexpr bool host_is_master()        noexcept { return true; }
 
   inline bool host_reference_tracking()           noexcept { return g_host_local.reference_tracking; }
   inline void set_host_reference_tracking(bool b) noexcept { g_host_local.reference_tracking=b; }

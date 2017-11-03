@@ -115,7 +115,7 @@ public:
   static void print_configuration( std::ostream & , const bool verbose = false );
 
   /// \brief is the instance asynchronous
-  static constexpr bool is_asynchronous( OpenMP const& = OpenMP() ) noexcept { return false };
+  static constexpr bool is_asynchronous( OpenMP const& = OpenMP() ) noexcept { return false; };
 
   /// \brief Wait until all dispatched functors complete on the given instance
   inline static void fence( OpenMP const& = OpenMP() ) noexcept {};
