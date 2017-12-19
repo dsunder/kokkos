@@ -72,8 +72,6 @@ int kokkos_omp_in_parallel()
 #endif
 }
 
-bool s_using_hwloc = false;
-
 } // namespace
 } // namespace Impl
 } // namespace Kokkos
@@ -133,12 +131,12 @@ void OpenMPTargetExec::clear_scratch()
 
 void* OpenMPTargetExec::get_scratch_ptr() { return m_scratch_ptr; }
 
-void OpenMPTargetExec::resize_scratch( int64_t reduce_bytes , 
-                                       int64_t team_reduce_bytes, 
-                                       int64_t team_shared_bytes, int64_t thread_local_bytes) 
+void OpenMPTargetExec::resize_scratch( int64_t reduce_bytes ,
+                                       int64_t team_reduce_bytes,
+                                       int64_t team_shared_bytes, int64_t thread_local_bytes)
 {
   Kokkos::Experimental::OpenMPTargetSpace space;
-  uint64_t total_size = MAX_ACTIVE_TEAMS * reduce_bytes +            // Inter Team Reduction  
+  uint64_t total_size = MAX_ACTIVE_TEAMS * reduce_bytes +            // Inter Team Reduction
                         MAX_ACTIVE_TEAMS * team_reduce_bytes  +    // Intra Team Reduction
                         MAX_ACTIVE_TEAMS * team_shared_bytes +       // Team Local Scratch
                         MAX_ACTIVE_THREADS * thread_local_bytes;     // Thread Private Scratch
@@ -189,12 +187,6 @@ void OpenMPTarget::finalize()
 
   m_is_initialized = false;
 
-  omp_set_num_threads(1);
-
-  if ( Kokkos::Impl::s_using_hwloc && Kokkos::hwloc::can_bind_threads() ) {
-    hwloc::unbind_this_thread();
-  }
-
   #ifdef KOKKOS_ENABLE_PROFILING
     Kokkos::Profiling::finalize();
   #endif
@@ -205,61 +197,6 @@ void OpenMPTarget::finalize()
 void OpenMPTarget::print_configuration( std::ostream & s , const bool detail )
 {
   Kokkos::Impl::OpenMPTargetExec::verify_is_process( "OpenMPTarget::print_configuration" );
-/*
-  s << "Kokkos::Experimental::OpenMPTarget" ;
-
-#if defined( KOKKOS_ENABLE_OPENMPTARGET )
-  s << " KOKKOS_ENABLE_OPENMPTARGET" ;
-#endif
-#if defined( KOKKOS_HAVE_HWLOC )
-
-  const unsigned numa_count_       = Kokkos::hwloc::get_available_numa_count();
-  const unsigned cores_per_numa   = Kokkos::hwloc::get_available_cores_per_numa();
-  const unsigned threads_per_core = Kokkos::hwloc::get_available_threads_per_core();
-
-  s << " hwloc[" << numa_count_ << "x" << cores_per_numa << "x" << threads_per_core << "]"
-    << " hwloc_binding_" << ( Impl::s_using_hwloc ? "enabled" : "disabled" )
-    ;
-#endif
-
-  const bool is_initialized = 0 != Impl::OpenMPTargetExec::m_pool[0] ;
-
-  if ( is_initialized ) {
-    const int numa_count      = Kokkos::Impl::OpenMPTargetExec::m_pool_topo[0] / Kokkos::Impl::OpenMPTargetExec::m_pool_topo[1] ;
-    const int core_per_numa   = Kokkos::Impl::OpenMPTargetExec::m_pool_topo[1] / Kokkos::Impl::OpenMPTargetExec::m_pool_topo[2] ;
-    const int thread_per_core = Kokkos::Impl::OpenMPTargetExec::m_pool_topo[2] ;
-
-    s << " thread_pool_topology[ " << numa_count
-      << " x " << core_per_numa
-      << " x " << thread_per_core
-      << " ]"
-      << std::endl ;
-
-    if ( detail ) {
-      std::vector< std::pair<unsigned,unsigned> > coord( Kokkos::Impl::OpenMPTargetExec::m_pool_topo[0] );
-
-#pragma omp parallel
-      {
-#pragma omp critical
-        {
-          coord[ omp_get_thread_num() ] = hwloc::get_this_thread_coordinate();
-        }
-// END #pragma omp critical 
-      }
-// END #pragma omp parallel 
-
-      for ( unsigned i = 0 ; i < coord.size() ; ++i ) {
-        s << "  thread omp_rank[" << i << "]"
-          << " kokkos_rank[" << Impl::OpenMPTargetExec::m_map_rank[ i ] << "]"
-          << " hwloc_coord[" << coord[i].first << "." << coord[i].second << "]"
-          << std::endl ;
-      }
-    }
-  }
-  else {
-    s << " not initialized" << std::endl ;
-  }
-*/
 }
 
 int OpenMPTarget::concurrency() {

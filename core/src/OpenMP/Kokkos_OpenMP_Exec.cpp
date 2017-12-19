@@ -260,27 +260,6 @@ namespace Kokkos {
 
 //----------------------------------------------------------------------------
 
-int OpenMP::get_current_max_threads() noexcept
-{
-  // Using omp_get_max_threads(); is problematic in conjunction with
-  // Hwloc on Intel (essentially an initial call to the OpenMP runtime
-  // without a parallel region before will set a process mask for a single core
-  // The runtime will than bind threads for a parallel region to other cores on the
-  // entering the first parallel region and make the process mask the aggregate of
-  // the thread masks. The intend seems to be to make serial code run fast, if you
-  // compile with OpenMP enabled but don't actually use parallel regions or so
-  // static int omp_max_threads = omp_get_max_threads();
-
-  int count = 0;
-  #pragma omp parallel
-  {
-    #pragma omp atomic
-     ++count;
-  }
-  return count;
-}
-
-
 void OpenMP::initialize( int thread_count )
 {
   if ( omp_in_parallel() ) {
@@ -306,30 +285,20 @@ void OpenMP::initialize( int thread_count )
     // Before any other call to OMP query the maximum number of threads
     // and save the value for re-initialization unit testing.
 
-    Impl::g_openmp_hardware_max_threads = get_current_max_threads();
+    const int num_procs = omp_get_num_procs();
 
-    int process_num_threads = Impl::g_openmp_hardware_max_threads;
-
-    if ( Kokkos::hwloc::available() ) {
-      process_num_threads = Kokkos::hwloc::get_available_numa_count()
-                          * Kokkos::hwloc::get_available_cores_per_numa()
-                          * Kokkos::hwloc::get_available_threads_per_core();
-    }
+    Impl::g_openmp_hardware_max_threads = num_procs;
 
     // if thread_count  < 0, use g_openmp_hardware_max_threads;
     // if thread_count == 0, set g_openmp_hardware_max_threads to process_num_threads
     // if thread_count  > 0, set g_openmp_hardware_max_threads to thread_count
-    if (thread_count < 0 ) {
-      thread_count = Impl::g_openmp_hardware_max_threads;
-    }
-    else if( thread_count == 0 && Impl::g_openmp_hardware_max_threads != process_num_threads ) {
-      Impl::g_openmp_hardware_max_threads = process_num_threads;
-      omp_set_num_threads(Impl::g_openmp_hardware_max_threads);
+    if (thread_count <= 0 ) {
+      thread_count = num_procs;
     }
     else {
-      if( Kokkos::show_warnings() && thread_count > process_num_threads ) {
+      if( Kokkos::show_warnings() && thread_count > num_procs ) {
         printf( "Kokkos::OpenMP::initialize WARNING: You are likely oversubscribing your CPU cores.\n");
-        printf( "  process threads available : %3d,  requested thread : %3d\n", process_num_threads, thread_count );
+        printf( "  process threads available : %3d,  requested thread : %3d\n", num_procs, thread_count );
       }
       Impl::g_openmp_hardware_max_threads = thread_count;
       omp_set_num_threads(Impl::g_openmp_hardware_max_threads);
