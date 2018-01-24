@@ -251,7 +251,7 @@
   #endif
 #endif
 
-#if defined( __PGIC__ ) 
+#if defined( __PGIC__ )
   #define KOKKOS_COMPILER_PGI __PGIC__*100+__PGIC_MINOR__*10+__PGIC_PATCHLEVEL__
 
   #if ( 1540 > KOKKOS_COMPILER_PGI )
@@ -308,7 +308,7 @@
 
   #if defined( KOKKOS_ARCH_AVX512MIC )
       #define KOKKOS_ENABLE_RFO_PREFETCH 1
-  #endif 
+  #endif
 
   #if defined( __MIC__ )
     // Compiling for Xeon Phi
@@ -519,5 +519,29 @@
   #define KOKKOS_IMPL_CUDA_VERSION_9_WORKAROUND
   #endif
 #endif
+
+#if defined( _OPENMP )
+  #if   (_OPENMP >= 201511)
+    #define KOKKOS_OPENMP_VERSION 45
+  #elif (_OPENMP >= 201307 )
+    #define KOKKOS_OPENMP_VERSION 40
+  #elif (_OPENMP >= 201107 )
+    #define KOKKOS_OPENMP_VERSION 31
+  #elif (_OPENMP >= 200805 )
+    #define KOKKOS_OPENMP_VERSION 30
+  #elif (_OPENMP >= 200505 )
+    #define KOKKOS_OPENMP_VERSION 25
+  #else
+    #define KOKKOS_OPENMP_VERSION -1
+  #endif
+
+  #if (KOKKOS_OPENMP_VERSION < 31)
+    #error "Error: Detected OpenMP version is less than 3.1"
+  #endif
+
+  #if defined( KOKKOS_ENABLE_OPENMPTARGET ) && (KOKKOS_OPENMP_VERSION < 45)
+    #error "Error: OpenMPTarget execution space requires OpenMP version >= 4.5"
+#endif
+
 #endif // #ifndef KOKKOS_MACROS_HPP
 
