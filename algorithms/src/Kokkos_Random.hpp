@@ -1,13 +1,13 @@
 /*
 //@HEADER
 // ************************************************************************
-// 
+//
 //                        Kokkos v. 2.0
 //              Copyright (2014) Sandia Corporation
-// 
+//
 // Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
 // the U.S. Government retains certain rights in this software.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
 // met:
@@ -36,7 +36,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 // Questions? Contact  H. Carter Edwards (hcedwar@sandia.gov)
-// 
+//
 // ************************************************************************
 //@HEADER
 */
@@ -751,7 +751,11 @@ namespace Kokkos {
 
     KOKKOS_INLINE_FUNCTION
     Random_XorShift64<DeviceType> get_state() const {
+      #if defined( __CUDA_ARCH__ )
+      const int i = 0;
+      #else
       const int i = DeviceType::hardware_thread_id();;
+      #endif
       return Random_XorShift64<DeviceType>(state_(i),i);
     }
 
@@ -1012,7 +1016,11 @@ namespace Kokkos {
 
     KOKKOS_INLINE_FUNCTION
     Random_XorShift1024<DeviceType> get_state() const {
-      const int i = DeviceType::hardware_thread_id();
+      #if defined( __CUDA_ARCH__ )
+      const int i = 0;
+      #else
+      const int i = DeviceType::hardware_thread_id();;
+      #endif
       return Random_XorShift1024<DeviceType>(state_,p_(i),i);
     };
 
@@ -1267,7 +1275,7 @@ void Random_XorShift1024_Pool<Kokkos::Cuda>::free_state(const Random_XorShift102
 
 #endif
 
-#if defined(KOKKOS_ENABLE_ROCM) 
+#if defined(KOKKOS_ENABLE_ROCM)
 
   template<>
   class Random_XorShift1024<Kokkos::Experimental::ROCm> {

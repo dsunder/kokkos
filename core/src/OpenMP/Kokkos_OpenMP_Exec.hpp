@@ -55,6 +55,7 @@
 
 #include <impl/Kokkos_Traits.hpp>
 #include <impl/Kokkos_HostThreadTeam.hpp>
+#include <impl/Kokkos_ThreadResource.hpp>
 
 #include <Kokkos_Atomic.hpp>
 
@@ -73,15 +74,13 @@ namespace Kokkos { namespace Impl {
 
 class OpenMPExec;
 
-extern int g_openmp_hardware_max_threads;
-
-extern __thread int t_openmp_hardware_id;
-extern __thread OpenMPExec * t_openmp_instance;
+__thread extern OpenMPExec * t_openmp_instance;
 
 //----------------------------------------------------------------------------
 /** \brief  Data for OpenMP thread execution */
 
-class OpenMPExec {
+class OpenMPExec
+{
 public:
 
   friend class Kokkos::OpenMP ;
@@ -97,7 +96,7 @@ public:
 
 private:
   OpenMPExec( int arg_pool_size )
-    : m_pool_size{ arg_pool_size }
+    : m_concurrency{ arg_pool_size }
     , m_level{ omp_get_level() }
     , m_pool()
   {}
@@ -107,14 +106,54 @@ private:
     clear_thread_data();
   }
 
-  int m_pool_size;
+  int m_concurrency;
   int m_level;
 
   HostThreadTeamData * m_pool[ MAX_THREAD_COUNT ];
 
+  static bool s_is_partitioned;
+  static bool s_is_initialized;
+
+  static int s_num_partitions;
+  static int s_partition_size;
+
 public:
 
+  static int max_concurrency() noexcept
+  {
+    return  Impl::ThreadResource::process().concurrency();
+  }
+
+  static int tid() noexcept
+  {
+    return s_is_partitioned
+         ? omp_get_thread_num()
+         : omp_get_ancestor_thread_num(1)*s_partition_size + omp_get_ancestor_thread_num(2);
+         ;
+  }
+
+  static bool is_partitioned() noexcept { return s_is_partitioned; }
+
   static void verify_is_master( const char * const );
+
+  static int concurrency() noexcept { return omp_get_max_threads(); }
+
+  static int pool_size()   noexcept { return omp_get_num_threads(); }
+
+  static int pool_rank()   noexcept
+  {
+    return !Impl::OpenMPExec::is_partitioned() || omp_get_level() >= 2
+         ?  omp_get_thread_num()
+         :  omp_get_level() < 2
+         ?  0
+         :  omp_get_ancestor_thread_num(2) // Kokkos only nests to the 2nd level
+         ;
+  }
+
+  bool in_parallel() const noexcept
+  {
+    return omp_in_parallel() && ( !s_is_partitioned || omp_get_level() > 2 );
+  }
 
   void resize_thread_data( size_t pool_reduce_bytes
                          , size_t team_reduce_bytes
@@ -130,6 +169,7 @@ public:
   { return m_pool[i]; }
 };
 
+
 }} // namespace Kokkos::Impl
 
 //----------------------------------------------------------------------------
@@ -137,47 +177,48 @@ public:
 
 namespace Kokkos {
 
-inline OpenMP::OpenMP() noexcept
-{}
-
 inline
 bool OpenMP::is_initialized() noexcept
-{ return Impl::t_openmp_instance != nullptr; }
+{ return Impl::OpenMPExec::s_is_initialized; }
 
 inline
 bool OpenMP::in_parallel( OpenMP const& ) noexcept
 {
-  //t_openmp_instance is only non-null on a master thread
-  return   !Impl::t_openmp_instance
-         || Impl::t_openmp_instance->m_level < omp_get_level()
-         ;
+  return !Impl::t_openmp_instance || Impl::t_openmp_instance->in_parallel();
 }
 
+// only work with OpenMP a max of two nested levels
 inline
-int OpenMP::thread_pool_size() noexcept
+int OpenMP::hardware_thread_id() noexcept
 {
-  return   OpenMP::in_parallel()
-         ? omp_get_num_threads()
-         : Impl::t_openmp_instance->m_pool_size
-         ;
+  return Impl::OpenMPExec::tid();
 }
 
-KOKKOS_INLINE_FUNCTION
-int OpenMP::thread_pool_rank() noexcept
+inline
+int OpenMP::concurrency() noexcept
 {
-#if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-  return Impl::t_openmp_instance ? 0 : omp_get_thread_num();
-#else
-  return -1 ;
-#endif
+  return Impl::OpenMPExec::concurrency();
 }
 
 inline
-void OpenMP::fence( OpenMP const& instance ) noexcept {}
+int OpenMP::pool_size() noexcept
+{
+  return Impl::OpenMPExec::pool_size();
+}
+
 
 inline
-bool OpenMP::is_asynchronous( OpenMP const& instance ) noexcept
-{ return false; }
+int OpenMP::pool_rank() noexcept
+{
+  return Impl::OpenMPExec::pool_rank();
+}
+
+inline
+int OpenMP::max_hardware_threads() noexcept
+{
+  return  Impl::OpenMPExec::max_concurrency();
+}
+
 
 template <typename F>
 void OpenMP::partition_master( F const& f
@@ -185,14 +226,19 @@ void OpenMP::partition_master( F const& f
                              , int partition_size
                              )
 {
-  if (omp_get_nested()) {
+  if (omp_get_nested() && !Impl::OpenMPExec::is_partitioned() ) {
     using Exec = Impl::OpenMPExec;
 
     Exec * prev_instance = Impl::t_openmp_instance;
 
-    Exec::validate_partition( prev_instance->m_pool_size, num_partitions, partition_size );
+    Exec::validate_partition( prev_instance->m_concurrency, num_partitions, partition_size );
 
     OpenMP::memory_space space;
+
+    Impl::OpenMPExec::s_is_initialized = true;
+    Impl::OpenMPExec::s_num_partitions = num_partitions;
+    Impl::OpenMPExec::s_partition_size = partition_size;
+
 
     #pragma omp parallel num_threads(num_partitions)
     {
@@ -220,6 +266,11 @@ void OpenMP::partition_master( F const& f
     }
 
     Impl::t_openmp_instance  = prev_instance;
+
+    Impl::OpenMPExec::s_is_initialized = false;
+    Impl::OpenMPExec::s_num_partitions = 0;
+    Impl::OpenMPExec::s_partition_size = 0;
+
   }
   else {
     // nested openmp not enabled
@@ -307,7 +358,7 @@ public:
   int size() const noexcept
     {
       #if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-      return Kokkos::Impl::g_openmp_hardware_max_threads ;
+      return Impl::ThreadResource::process().concurrency();
       #else
       return 0 ;
       #endif
@@ -318,7 +369,7 @@ public:
   int acquire() const noexcept
     {
       #if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-      return Kokkos::Impl::t_openmp_hardware_id ;
+      return OpenMP::hardware_thread_id() ;
       #else
       return 0 ;
       #endif
@@ -335,27 +386,30 @@ public:
 #if !defined( KOKKOS_DISABLE_DEPRECATED )
 
 inline
-int OpenMP::thread_pool_size( int depth )
+int OpenMP::thread_pool_size() noexcept
 {
-  return depth < 2
-         ? thread_pool_size()
-         : 1;
+  return   OpenMP::in_parallel()
+         ? omp_get_num_threads()
+         : omp_get_max_threads()
+         ;
 }
 
 KOKKOS_INLINE_FUNCTION
-int OpenMP::hardware_thread_id() noexcept
+int OpenMP::thread_pool_rank() noexcept
 {
 #if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-  return Impl::t_openmp_hardware_id;
+  return Impl::OpenMPExec::pool_rank();
 #else
   return -1 ;
 #endif
 }
 
 inline
-int OpenMP::max_hardware_threads() noexcept
+int OpenMP::thread_pool_size( int depth )
 {
-  return Impl::g_openmp_hardware_max_threads;
+  return depth < 2
+         ? thread_pool_size()
+         : 1;
 }
 
 #endif // KOKKOS_DISABLE_DEPRECATED
