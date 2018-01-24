@@ -541,6 +541,12 @@
 
   #if defined( KOKKOS_ENABLE_OPENMPTARGET ) && (KOKKOS_OPENMP_VERSION < 45)
     #error "Error: OpenMPTarget execution space requires OpenMP version >= 4.5"
+  #endif
+#endif
+
+#if  !defined( KOKKOS_ENABLE_HWLOC )  && !defined( KOKKOS_ENABLE_SCHED ) \
+  && !defined( __APPLE__ )            && defined( _GNU_SOURCE )
+  #define KOKKOS_ENABLE_SCHED
 #endif
 
 #endif // #ifndef KOKKOS_MACROS_HPP

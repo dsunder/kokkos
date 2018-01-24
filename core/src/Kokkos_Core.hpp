@@ -85,12 +85,13 @@
 #include <Kokkos_View.hpp>
 #include <Kokkos_Vectorization.hpp>
 #include <Kokkos_Atomic.hpp>
-#include <Kokkos_hwloc.hpp>
 #include <Kokkos_Timer.hpp>
 
 #include <Kokkos_Complex.hpp>
 
 #include <Kokkos_CopyViews.hpp>
+#include <impl/Kokkos_ThreadResource.hpp>
+
 #include <functional>
 #include <iosfwd>
 

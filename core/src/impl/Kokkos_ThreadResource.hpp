@@ -61,9 +61,9 @@ public:
   static void initialize();
 
   // must be called before returning from main to avoid memory leaks
-  static void finialize();
+  static void finalize();
 
-  static bool is_initialie();
+  static bool is_initialized() noexcept;
 
   // Handle to the detected hardware topology
   // that this process is bound to
@@ -78,7 +78,7 @@ public:
 
   // how far down the the topology tree is the resource
   // root and process are at level 0
-  int depth() const;
+  int depth() const noexcept;
 
   // id independant of process binding
   int id() const noexcept;

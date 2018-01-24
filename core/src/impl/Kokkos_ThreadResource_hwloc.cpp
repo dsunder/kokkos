@@ -43,6 +43,8 @@
 
 #include <Kokkos_Macros.hpp>
 
+#if defined(KOKKOS_ENABLE_HWLOC)
+
 #include <impl/Kokkos_ThreadResource.hpp>
 
 #include <algorithm>
@@ -53,11 +55,16 @@
 #include <omp.h>
 #endif
 
-#if defined(KOKKOS_ENABLE_HWLOC)
-
 #include <hwloc.h>
 
 namespace Kokkos { namespace Impl {
+
+struct Sential
+{
+  Sential() : initialized{true} {}
+  ~Sential();
+  bool initialized {false};
+};
 
 class ThreadResource::Pimpl
 {
@@ -66,6 +73,8 @@ public:
   static void initialize()
   {
     if ( is_initialized() ) return;
+
+    const static Sential sential;
 
     hwloc_topology_init( & s_topology );
     hwloc_topology_load( s_topology );
@@ -343,8 +352,186 @@ hwloc_topology_t        ThreadResource::Pimpl::s_topology {nullptr};
 hwloc_cpuset_t          ThreadResource::Pimpl::s_process  {nullptr};
 hwloc_cpuset_t          ThreadResource::Pimpl::s_scratch  {nullptr};
 
+Sential::~Sential()
+{
+  if (initialized) {
+    ThreadResource::Pimpl::finalize();
+  }
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+namespace {
+
+const ThreadResource::Pimpl * find_impl( ThreadResource::Pimpl const * pimpl
+                                         , hwloc_const_cpuset_t cpuset
+                                         ) noexcept
+{
+  ThreadResource::initialize();
+  if( hwloc_bitmap_isequal(pimpl->get_cpuset(), cpuset) ) {
+    // traverse to the lowest level
+    while (pimpl->num_children() == 1) {
+      pimpl = pimpl->child(0);
+    }
+    return pimpl;
+  }
+  else if ( pimpl->num_children() > 0 ) {
+    for (int i=0; i < pimpl->num_children(); ++i) {
+      if ( hwloc_bitmap_isincluded( cpuset, pimpl->child(i)->get_cpuset()) ) {
+        return find_impl( pimpl->child(i), cpuset );
+      }
+    }
+  }
+
+  return nullptr;
+}
+
+std::ostream & operator<<( std::ostream & out, const ThreadResource::Pimpl * res )
+{
+  ThreadResource::initialize();
+  if (res) {
+    if (res->depth() == 0) {
+      out << "root";
+    } else {
+      out << res->parent() << "." << res->id();
+    }
+  }
+  else {
+    out << "null";
+  }
+  return out;
+}
+
+} // namespace
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+std::ostream & operator<<( std::ostream & out, const ThreadResource res )
+{
+  ThreadResource::initialize();
+  if (res) {
+    out << "{ " << ThreadResource::impl_get_pimpl(res) << " : " << res.concurrency() << " }";
+  }
+  else {
+    out << "{ null : 0 }";
+  }
+  return out;
+}
+
+ThreadResource this_thread_get_bind() noexcept
+{
+  ThreadResource::initialize();
+  hwloc_cpuset_t scratch = hwloc_bitmap_alloc();
+  const int err = hwloc_get_cpubind( ThreadResource::Pimpl::topology()
+                                   , scratch
+                                   , HWLOC_CPUBIND_THREAD
+                                   );
+
+  const ThreadResource::Pimpl * result = nullptr;
+
+  const ThreadResource::Pimpl * root = ThreadResource::impl_get_pimpl( ThreadResource::process() );
+
+  if (!err) {
+    result = find_impl( root , scratch );
+  }
+
+  if (!result ) { result = root; }
+
+  hwloc_bitmap_free( scratch );
+
+  return ThreadResource{ result };
+}
+
+ThreadResource this_thread_get_resource() noexcept
+{
+  ThreadResource::initialize();
+  hwloc_cpuset_t scratch = hwloc_bitmap_alloc();
+  const int err = hwloc_get_last_cpu_location( ThreadResource::Pimpl::topology()
+                                             , scratch
+                                             , HWLOC_CPUBIND_THREAD
+                                             );
+
+  const ThreadResource::Pimpl * result = nullptr;
+
+  const ThreadResource::Pimpl * root = ThreadResource::impl_get_pimpl( ThreadResource::process() );
+
+  if (!err) {
+    result = find_impl( root, scratch );
+  }
+
+  if (!result ) { result = root; }
+
+  hwloc_bitmap_free( scratch );
+
+  return ThreadResource{ result };
+}
+
+bool this_thread_set_binding( const ThreadResource res ) noexcept
+{
+  ThreadResource::initialize();
+  #if !defined( _OPENMP )
+  if (res) {
+    const int err = hwloc_set_cpubind( ThreadResource::Pimpl::topology()
+                                     , ThreadResource::impl_get_pimpl(res)->get_cpuset()
+                                     , HWLOC_CPUBIND_THREAD | HWLOC_CPUBIND_STRICT
+                                     );
+    return !err;
+  }
+  #endif
+  return false;
+}
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+void ThreadResource::initialize()
+{
+  Pimpl::initialize();
+}
+
+void ThreadResource::finalize()
+{
+  Pimpl::finalize();
+}
+
+bool ThreadResource::is_initialized() noexcept
+{ return Pimpl::is_initialized(); }
+
+ThreadResource ThreadResource::process() noexcept
+{ initialize(); return Pimpl::process(); }
+
+int ThreadResource::depth() const noexcept
+{ initialize(); return m_pimpl->depth(); }
+
+int ThreadResource::id() const noexcept
+{ initialize(); return m_pimpl->id(); }
+
+int ThreadResource::concurrency() const noexcept
+{ initialize(); return m_pimpl->concurrency(); }
+
+int ThreadResource::num_leaves() const noexcept
+{ initialize(); return m_pimpl->num_leaves(); }
+
+ThreadResource ThreadResource::leaf(int i) const noexcept
+{ initialize(); return ThreadResource{ m_pimpl->leaf(i) }; }
+
+ThreadResource ThreadResource::member_of() const noexcept
+{ initialize(); return ThreadResource{ m_pimpl->parent() }; }
+
+int ThreadResource::num_partitions() const noexcept
+{ initialize(); return m_pimpl->num_children(); }
+
+ThreadResource ThreadResource::partition(int i) const noexcept
+{ initialize(); return ThreadResource{ m_pimpl->child(i) }; }
+
+bool ThreadResource::is_symmetric() const noexcept
+{ initialize(); return m_pimpl->is_symmetric(); }
+
+
 }} // namespace Kokkos::Impl
 
-
+#else
+void KOKKOS_CORE_SRC_IMPL_THREAD_RESOURCE_HWLOC() {}
 #endif // KOKKOS_ENABLE_HWLOC
 

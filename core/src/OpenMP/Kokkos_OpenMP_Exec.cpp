@@ -283,6 +283,8 @@ int OpenMP::get_current_max_threads() noexcept
 
 void OpenMP::initialize( int thread_count )
 {
+  Impl::ThreadResource::initialize();
+
   if ( omp_in_parallel() ) {
     std::string msg("Kokkos::OpenMP::initialize ERROR : in parallel");
     Kokkos::Impl::throw_runtime_exception(msg);
@@ -308,13 +310,7 @@ void OpenMP::initialize( int thread_count )
 
     Impl::g_openmp_hardware_max_threads = get_current_max_threads();
 
-    int process_num_threads = Impl::g_openmp_hardware_max_threads;
-
-    if ( Kokkos::hwloc::available() ) {
-      process_num_threads = Kokkos::hwloc::get_available_numa_count()
-                          * Kokkos::hwloc::get_available_cores_per_numa()
-                          * Kokkos::hwloc::get_available_threads_per_core();
-    }
+    const int process_num_threads = Impl::ThreadResource::process().concurrency();
 
     // if thread_count  < 0, use g_openmp_hardware_max_threads;
     // if thread_count == 0, set g_openmp_hardware_max_threads to process_num_threads
@@ -323,6 +319,7 @@ void OpenMP::initialize( int thread_count )
       thread_count = Impl::g_openmp_hardware_max_threads;
     }
     else if( thread_count == 0 && Impl::g_openmp_hardware_max_threads != process_num_threads ) {
+      thread_count = process_num_threads;
       Impl::g_openmp_hardware_max_threads = process_num_threads;
       omp_set_num_threads(Impl::g_openmp_hardware_max_threads);
     }
@@ -419,6 +416,8 @@ void OpenMP::finalize()
   #if defined(KOKKOS_ENABLE_PROFILING)
     Kokkos::Profiling::finalize();
   #endif
+
+   Impl::ThreadResource::finalize();
 }
 
 //----------------------------------------------------------------------------

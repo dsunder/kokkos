@@ -73,6 +73,8 @@ bool is_unsigned_int(const char* str)
 
 void initialize_internal(const InitArguments& args)
 {
+  ThreadResource::initialize();
+
 // This is an experimental setting
 // For KNL in Flat mode this variable should be set, so that
 // memkind allocates high bandwidth memory correctly.
@@ -240,6 +242,8 @@ void finalize_internal( const bool all_spaces = false )
 
   g_is_initialized = false;
   g_show_warnings = true;
+
+  ThreadResource::finalize();
 }
 
 void fence_internal()

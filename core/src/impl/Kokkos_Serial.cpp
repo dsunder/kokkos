@@ -51,6 +51,7 @@
 #include <impl/Kokkos_Error.hpp>
 
 #include <impl/Kokkos_SharedAlloc.hpp>
+#include <impl/Kokkos_ThreadResource.hpp>
 
 /*--------------------------------------------------------------------------*/
 
@@ -148,6 +149,8 @@ void Serial::initialize( unsigned threads_count
                        , unsigned use_cores_per_numa
                        , bool allow_asynchronous_threadpool )
 {
+  Impl::ThreadResource::initialize();
+
   (void) threads_count;
   (void) use_numa_count;
   (void) use_cores_per_numa;
@@ -183,6 +186,7 @@ void Serial::finalize()
   #endif
 
   Impl::g_serial_is_initialized = false;
+  Impl::ThreadResource::finalize();
 }
 
 const char* Serial::name() { return "Serial"; }
