@@ -383,7 +383,7 @@ public:
 } // namespace Experimental
 
 
-#if !defined( KOKKOS_DISABLE_DEPRECATED )
+#ifdef KOKKOS_ENABLE_DEPRECATED_CODE
 
 inline
 int OpenMP::thread_pool_size() noexcept
@@ -412,7 +412,7 @@ int OpenMP::thread_pool_size( int depth )
          : 1;
 }
 
-#endif // KOKKOS_DISABLE_DEPRECATED
+#endif
 
 } // namespace Kokkos
 

@@ -422,7 +422,7 @@ void OpenMP::print_configuration( std::ostream & s , const bool verbose )
   }
 }
 
-#if !defined( KOKKOS_DISABLE_DEPRECATED )
+#ifdef KOKKOS_ENABLE_DEPRECATED_CODE
 
 void OpenMP::initialize( int thread_count , int, int )
 {
