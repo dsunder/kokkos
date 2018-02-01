@@ -108,6 +108,25 @@ public:
 
   //----------------------------------------------------------------------------
 
+  static ThreadResource this_thread_get_binding() noexcept;
+
+  static ThreadResource this_thread_get_resource() noexcept;
+
+  static bool this_thread_set_binding( const ThreadResource ) noexcept;
+
+  static constexpr bool this_thread_can_bind() noexcept
+  {
+    #if    !defined(_OPENMP)   \
+        && !defined(__APPLE__) \
+        && ( defined( KOKKOS_ENABLE_HWLOC ) || defined( _GNU_SOURCE ) )
+      return true;
+    #else
+      return false;
+    #endif
+  }
+
+  //----------------------------------------------------------------------------
+
   ThreadResource()                                      noexcept = default;
   ThreadResource( ThreadResource const &  )             noexcept = default;
   ThreadResource( ThreadResource       && )             noexcept = default;
@@ -147,27 +166,6 @@ std::ostream & operator <<( std::ostream & out, const ThreadResource );
 
 //------------------------------------------------------------------------------
 
-// Will return the smallest ThreadResource which completely covers the detected
-// binding
-ThreadResource this_thread_get_binding() noexcept;
-ThreadResource this_thread_get_resource() noexcept;
-bool this_thread_set_binding( const ThreadResource ) noexcept;
-
-// Used in the pthread and stdthread backends
-constexpr bool this_thread_can_bind()
-{
-  #if    !defined(_OPENMP)   \
-      && !defined(__APPLE__) \
-      && ( defined( KOKKOS_ENABLE_HWLOC ) || defined( _GNU_SOURCE ) )
-    return true;
-  #else
-    return false;
-  #endif
-}
-
-
-//------------------------------------------------------------------------------
-
 
 }} // namespace Kokkos::Impl
 
@@ -183,7 +181,10 @@ constexpr bool available() { return true; }
 constexpr bool available() { return false; }
 #endif
 
-constexpr bool can_bind_threads() { return Kokkos::Impl::this_thread_can_bind(); }
+constexpr bool can_bind_threads()
+{
+  return Kokkos::Impl::ThreadResource::this_thread_can_bind();
+}
 
 
 inline

@@ -179,7 +179,7 @@ std::ostream & operator<<( std::ostream & out, const ThreadResource res )
   return out;
 }
 
-ThreadResource this_thread_get_bind() noexcept
+ThreadResource ThreadResource::this_thread_get_binding() noexcept
 {
   ThreadResource::initialize();
   cpu_set_t tmp;
@@ -207,7 +207,7 @@ ThreadResource this_thread_get_bind() noexcept
   return ThreadResource{ &ThreadResource::Pimpl::s_nodes[i+1] };
 }
 
-ThreadResource this_thread_get_resource() noexcept
+ThreadResource ThreadResource::this_thread_get_resource() noexcept
 {
   ThreadResource::initialize();
   const int gid = sched_getcpu();
@@ -224,7 +224,7 @@ ThreadResource this_thread_get_resource() noexcept
   return ThreadResource{ &ThreadResource::Pimpl::s_nodes[i+1] };
 }
 
-bool this_thread_set_binding( const ThreadResource res ) noexcept
+bool ThreadResource::this_thread_set_binding( const ThreadResource res ) noexcept
 {
   #if !defined( _OPENMP )
   if (res) {

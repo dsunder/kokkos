@@ -420,7 +420,7 @@ std::ostream & operator<<( std::ostream & out, const ThreadResource res )
   return out;
 }
 
-ThreadResource this_thread_get_bind() noexcept
+ThreadResource ThreadResource::this_thread_get_binding() noexcept
 {
   ThreadResource::initialize();
   hwloc_cpuset_t scratch = hwloc_bitmap_alloc();
@@ -444,7 +444,7 @@ ThreadResource this_thread_get_bind() noexcept
   return ThreadResource{ result };
 }
 
-ThreadResource this_thread_get_resource() noexcept
+ThreadResource ThreadResource::this_thread_get_resource() noexcept
 {
   ThreadResource::initialize();
   hwloc_cpuset_t scratch = hwloc_bitmap_alloc();
@@ -468,7 +468,7 @@ ThreadResource this_thread_get_resource() noexcept
   return ThreadResource{ result };
 }
 
-bool this_thread_set_binding( const ThreadResource res ) noexcept
+bool ThreadResource::this_thread_set_binding( const ThreadResource res ) noexcept
 {
   ThreadResource::initialize();
   #if !defined( _OPENMP )

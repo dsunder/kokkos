@@ -74,7 +74,7 @@ namespace Kokkos { namespace Impl {
 
 class OpenMPExec;
 
-__thread extern OpenMPExec * t_openmp_instance;
+extern __thread OpenMPExec * t_openmp_instance;
 
 //----------------------------------------------------------------------------
 /** \brief  Data for OpenMP thread execution */
@@ -126,7 +126,7 @@ public:
 
   static int tid() noexcept
   {
-    return s_is_partitioned
+    return !s_is_partitioned
          ? omp_get_thread_num()
          : omp_get_ancestor_thread_num(1)*s_partition_size + omp_get_ancestor_thread_num(2);
          ;
@@ -369,7 +369,7 @@ public:
   int acquire() const noexcept
     {
       #if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-      return OpenMP::hardware_thread_id() ;
+      return Impl::OpenMPExec::tid();
       #else
       return 0 ;
       #endif

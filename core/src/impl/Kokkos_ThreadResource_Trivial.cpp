@@ -82,19 +82,19 @@ std::ostream & operator<<( std::ostream & out, const ThreadResource )
   return out;
 }
 
-ThreadResource this_thread_get_bind() noexcept
+ThreadResource ThreadResource::this_thread_get_binding() noexcept
 {
   ThreadResource::initialize();
   return ThreadResource{ reinterpret_cast<ThreadResource::Pimpl*>(1) };
 }
 
-ThreadResource this_thread_get_resource() noexcept
+ThreadResource ThreadResource::this_thread_get_resource() noexcept
 {
   ThreadResource::initialize();
   return ThreadResource{ reinterpret_cast<ThreadResource::Pimpl*>(1) };
 }
 
-bool this_thread_set_binding( const ThreadResource res ) noexcept
+bool ThreadResource::this_thread_set_binding( const ThreadResource res ) noexcept
 {
   return false;
 }
