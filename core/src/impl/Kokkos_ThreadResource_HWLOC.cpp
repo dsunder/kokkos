@@ -59,10 +59,10 @@
 
 namespace Kokkos { namespace Impl {
 
-struct Sential
+struct Sentinel
 {
-  Sential() : initialized{true} {}
-  ~Sential();
+  Sentinel  () : initialized{true} {}
+  ~Sentinel ();
   bool initialized {false};
 };
 
@@ -74,7 +74,7 @@ public:
   {
     if ( is_initialized() ) return;
 
-    const static Sential sential;
+    const static Sentinel  sential;
 
     hwloc_topology_init( & s_topology );
     hwloc_topology_load( s_topology );
@@ -90,21 +90,18 @@ public:
     #else
       if ( !omp_in_parallel() ) {
 
-        int num_procs = omp_get_num_procs();
         #if KOKKOS_OPENMP_VERSION >= 40
-        #pragma omp parallel num_threads(num_procs) proc_bind(spread)
+        #pragma omp parallel num_threads(omp_get_num_procs()) proc_bind(spread)
         #else
-        #pragma omp parallel num_threads(num_procs)
+        #pragma omp parallel num_threads(omp_get_num_procs())
         #endif
         {
           hwloc_cpuset_t tmp = hwloc_bitmap_alloc();
           const int tmp_err = hwloc_get_cpubind( s_topology, tmp, HWLOC_CPUBIND_PROCESS );
 
-          #pragma omp atomic update
-          err |= tmp_err;
-
           #pragma omp critical
           {
+            err |= tmp_err;
             hwloc_bitmap_or( s_process, s_process, tmp );
           }
 
@@ -352,7 +349,7 @@ hwloc_topology_t        ThreadResource::Pimpl::s_topology {nullptr};
 hwloc_cpuset_t          ThreadResource::Pimpl::s_process  {nullptr};
 hwloc_cpuset_t          ThreadResource::Pimpl::s_scratch  {nullptr};
 
-Sential::~Sential()
+Sentinel  ::~Sentinel ()
 {
   if (initialized) {
     ThreadResource::Pimpl::finalize();

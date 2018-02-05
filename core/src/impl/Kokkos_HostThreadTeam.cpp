@@ -53,8 +53,9 @@
 namespace Kokkos {
 namespace Impl {
 
-void HostThreadTeamData::organize_pool
-  ( HostThreadTeamData * members[] , const int size )
+void HostThreadTeamData::organize_pool( CacheBlockedArray<HostThreadTeamData *> & members
+                                      , const int size
+                                      )
 {
   bool ok = true ;
 

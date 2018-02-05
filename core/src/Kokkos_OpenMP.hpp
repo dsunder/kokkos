@@ -137,24 +137,7 @@ public:
                               , int requested_partition_size = 0
                               );
 
-  // number of threads available to current pool for parallel algorithms
-  // when inside a parallel algorithm this returns 1
-  inline
-  static int concurrency() noexcept;
-
-  // number of threads used by the current parallel algorithm
-  // returns 1 when not in parallel
-  inline
-  static int pool_size() noexcept;
-
-  inline
-  static int pool_rank() noexcept;
-
-  inline
-  static int max_hardware_threads() noexcept;
-
-  inline
-  static int hardware_thread_id() noexcept;
+  inline static int concurrency() noexcept;
 
 #ifdef KOKKOS_ENABLE_DEPRECATED_CODE
   /// \brief Initialize the default execution space
@@ -175,6 +158,9 @@ public:
   static void sleep() {};
   static void wake() {};
 
+  inline static int max_hardware_threads() noexcept;
+
+  inline static int hardware_thread_id() noexcept;
 #endif
 
   static constexpr const char* name() noexcept { return "OpenMP"; }

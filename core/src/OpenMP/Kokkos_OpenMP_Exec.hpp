@@ -57,6 +57,8 @@
 #include <impl/Kokkos_HostThreadTeam.hpp>
 #include <impl/Kokkos_ThreadResource.hpp>
 
+#include <impl/Kokkos_CacheBlockedArray.hpp>
+
 #include <Kokkos_Atomic.hpp>
 
 #include <Kokkos_UniqueToken.hpp>
@@ -74,8 +76,6 @@ namespace Kokkos { namespace Impl {
 
 class OpenMPExec;
 
-extern __thread OpenMPExec * t_openmp_instance;
-
 //----------------------------------------------------------------------------
 /** \brief  Data for OpenMP thread execution */
 
@@ -85,8 +85,6 @@ public:
 
   friend class Kokkos::OpenMP ;
 
-  enum { MAX_THREAD_COUNT = 512 };
-
   void clear_thread_data();
 
   static void validate_partition( const int nthreads
@@ -95,10 +93,10 @@ public:
                                 );
 
 private:
-  OpenMPExec( int arg_pool_size )
+  OpenMPExec( int arg_pool_size, int arg_master_tid )
     : m_concurrency{ arg_pool_size }
-    , m_level{ omp_get_level() }
-    , m_pool()
+    , m_master_tid{ arg_master_tid }
+    , m_pool( arg_pool_size )
   {}
 
   ~OpenMPExec()
@@ -107,9 +105,9 @@ private:
   }
 
   int m_concurrency;
-  int m_level;
+  int m_master_tid;
 
-  HostThreadTeamData * m_pool[ MAX_THREAD_COUNT ];
+  CacheBlockedArray< HostThreadTeamData * > m_pool;
 
   static bool s_is_partitioned;
   static bool s_is_initialized;
@@ -117,7 +115,28 @@ private:
   static int s_num_partitions;
   static int s_partition_size;
 
+  static CacheBlockedArray< OpenMPExec * > s_instances;
+  static CacheBlockedArray< OpenMPExec * > s_partition_instances;
+
 public:
+
+  static OpenMPExec * instance() noexcept
+  {
+    return !s_is_partitioned
+         ? s_instances[tid()]
+         : s_partition_instances[tid()]
+         ;
+  }
+
+  static void set_instance( OpenMPExec * ptr ) noexcept
+  {
+    if (!s_is_partitioned) {
+      s_instances[tid()] = ptr;
+    }
+    else {
+      s_partition_instances[tid()] = ptr;
+    }
+  }
 
   static int max_concurrency() noexcept
   {
@@ -136,9 +155,9 @@ public:
 
   static void verify_is_master( const char * const );
 
-  static int concurrency() noexcept { return omp_get_max_threads(); }
+  static int concurrency() noexcept { return !in_parallel() ? omp_get_max_threads() : omp_get_num_threads(); }
 
-  static int pool_size()   noexcept { return omp_get_num_threads(); }
+  static int pool_size()   noexcept { return in_parallel() ? omp_get_num_threads() : omp_get_max_threads(); }
 
   static int pool_rank()   noexcept
   {
@@ -162,7 +181,7 @@ public:
 
   inline
   HostThreadTeamData * get_thread_data() const noexcept
-  { return m_pool[ m_level == omp_get_level() ? 0 : omp_get_thread_num() ]; }
+  { return m_pool[pool_rank()]; }
 
   inline
   HostThreadTeamData * get_thread_data( int i ) const noexcept
@@ -187,38 +206,11 @@ bool OpenMP::in_parallel( OpenMP const& ) noexcept
   return !Impl::t_openmp_instance || Impl::t_openmp_instance->in_parallel();
 }
 
-// only work with OpenMP a max of two nested levels
-inline
-int OpenMP::hardware_thread_id() noexcept
-{
-  return Impl::OpenMPExec::tid();
-}
-
 inline
 int OpenMP::concurrency() noexcept
 {
   return Impl::OpenMPExec::concurrency();
 }
-
-inline
-int OpenMP::pool_size() noexcept
-{
-  return Impl::OpenMPExec::pool_size();
-}
-
-
-inline
-int OpenMP::pool_rank() noexcept
-{
-  return Impl::OpenMPExec::pool_rank();
-}
-
-inline
-int OpenMP::max_hardware_threads() noexcept
-{
-  return  Impl::OpenMPExec::max_concurrency();
-}
-
 
 template <typename F>
 void OpenMP::partition_master( F const& f
@@ -226,51 +218,67 @@ void OpenMP::partition_master( F const& f
                              , int partition_size
                              )
 {
+  using Exec = Impl::OpenMPExec;
+
   if (omp_get_nested() && !Impl::OpenMPExec::is_partitioned() ) {
-    using Exec = Impl::OpenMPExec;
 
-    Exec * prev_instance = Impl::t_openmp_instance;
+    Exec::s_is_partitioned = true;
 
-    Exec::validate_partition( prev_instance->m_concurrency, num_partitions, partition_size );
+    // setup partitions
+    if (Exec::s_num_partitions != num_partitions || Exec::s_partition_size != partition_size) {
 
-    OpenMP::memory_space space;
+      OpenMP::memory_space space;
 
-    Impl::OpenMPExec::s_is_initialized = true;
-    Impl::OpenMPExec::s_num_partitions = num_partitions;
-    Impl::OpenMPExec::s_partition_size = partition_size;
+      // delete the old partitions
+      if ( Exec::s_num_partitions > 0 ) {
+        #pragma omp parallel num_threads(Exec::s_num_partitions) proc_bind(spread)
+        {
+          auto tmp = Exec::instance();
+          temp->~Exec();
 
+          space.deallocate( tmp, sizeof(Exec) );
+        }
+      }
 
-    #pragma omp parallel num_threads(num_partitions)
-    {
-      void * const ptr = space.allocate( sizeof(Exec) );
+      Exec::validate_partition( Exec::max_concurrency(), num_partitions, partition_size );
 
-      Impl::t_openmp_instance = new (ptr) Exec( partition_size );
+      Exec::s_num_partitions = num_partitions;
+      Exec::s_partition_size = partition_size;
 
-      size_t pool_reduce_bytes  =   32 * partition_size ;
-      size_t team_reduce_bytes  =   32 * partition_size ;
-      size_t team_shared_bytes  = 1024 * partition_size ;
-      size_t thread_local_bytes = 1024 ;
+      #pragma omp parallel num_threads(Exec::s_num_partitions) proc_bind(spread)
+      {
+        void * const ptr = space.allocate( sizeof(Exec) );
+        Exec * tmp = new (ptr) Exec( partition_size, Exec::tid() );
 
-      Impl::t_openmp_instance->resize_thread_data( pool_reduce_bytes
-                                                 , team_reduce_bytes
-                                                 , team_shared_bytes
-                                                 , thread_local_bytes
-                                                 );
+        omp_set_num_threads(Exec::s_partition_size);
 
-      omp_set_num_threads(partition_size);
-      f( omp_get_thread_num(), omp_get_num_threads() );
+        size_t pool_reduce_bytes  =   32 * partition_size ;
+        size_t team_reduce_bytes  =   32 * partition_size ;
+        size_t team_shared_bytes  = 1024 * partition_size ;
+        size_t thread_local_bytes = 1024 ;
 
-      Impl::t_openmp_instance->~Exec();
-      space.deallocate( Impl::t_openmp_instance, sizeof(Exec) );
-      Impl::t_openmp_instance = nullptr;
+        tmp->resize_thread_data( pool_reduce_bytes
+                               , team_reduce_bytes
+                               , team_shared_bytes
+                               , thread_local_bytes
+                               );
+
+        // set threads in team to point to same instance
+        #pragma omp parallel num_threads(Exec::s_partition_size) proc_bind(spread)
+        {
+          Exec::set_instance(tmp);
+        }
+      }
     }
 
-    Impl::t_openmp_instance  = prev_instance;
 
-    Impl::OpenMPExec::s_is_initialized = false;
-    Impl::OpenMPExec::s_num_partitions = 0;
-    Impl::OpenMPExec::s_partition_size = 0;
+    #pragma omp parallel num_threads(Exec::s_num_partitions) proc_bind(spread)
+    {
+      omp_set_num_threads(Exec::s_partition_size);
+      f( omp_get_thread_num(), omp_get_num_threads() );
+    }
 
+    Exec::s_is_partitioned = false;
   }
   else {
     // nested openmp not enabled
@@ -319,7 +327,7 @@ public:
   int size() const noexcept
     {
       #if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-      return Kokkos::OpenMP::thread_pool_size();
+      return Impl::OpenMPExec::pool_size();
       #else
       return 0 ;
       #endif
@@ -330,7 +338,7 @@ public:
   int acquire() const  noexcept
     {
       #if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-      return Kokkos::OpenMP::thread_pool_rank();
+      return Impl::OpenMPExec::pool_rank();
       #else
       return 0 ;
       #endif
@@ -411,6 +419,19 @@ int OpenMP::thread_pool_size( int depth )
          ? thread_pool_size()
          : 1;
 }
+
+inline
+int OpenMP::hardware_thread_id() noexcept
+{
+  return Impl::OpenMPExec::tid();
+}
+
+inline
+int OpenMP::max_hardware_threads() noexcept
+{
+  return  Impl::OpenMPExec::max_concurrency();
+}
+
 
 #endif
 

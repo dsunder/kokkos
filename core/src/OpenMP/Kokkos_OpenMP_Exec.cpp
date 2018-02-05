@@ -67,7 +67,8 @@ bool OpenMPExec::s_is_initialized = false;
 int OpenMPExec::s_num_partitions = 0;
 int OpenMPExec::s_partition_size = 0;
 
-__thread Impl::OpenMPExec * t_openmp_instance = nullptr;
+CacheBlockedArray< OpenMPExec * > OpenMPExec::s_instances;
+CacheBlockedArray< OpenMPExec * > OpenMPExec::s_partition_instances;
 
 void OpenMPExec::validate_partition( const int nthreads
                                    , int & num_partitions
@@ -129,7 +130,7 @@ void OpenMPExec::validate_partition( const int nthreads
 
 void OpenMPExec::verify_is_master( const char * const label )
 {
-  if ( !t_openmp_instance )
+  if ( tid() != instance()->m_master_tid )
   {
     std::string msg( label );
     msg.append( " ERROR: in parallel or not initialized" );

@@ -52,6 +52,8 @@
 #include <impl/Kokkos_FunctorAnalysis.hpp>
 #include <impl/Kokkos_HostBarrier.hpp>
 
+#include <impl/Kokkos_CacheBlockedArray.hpp>
+
 //----------------------------------------------------------------------------
 //----------------------------------------------------------------------------
 
@@ -214,8 +216,9 @@ public:
   // Requires: called by one thread.
   // Pool members are ordered as "close" - sorted by NUMA and then CORE
   // Each thread is its own team with team_size == 1.
-  static void organize_pool( HostThreadTeamData * members[]
-                           , const int size );
+  static void organize_pool( CacheBlockedArray<HostThreadTeamData *> & members
+                           , const int size
+                           );
 
   // Called by each thread within the pool
   void disband_pool();

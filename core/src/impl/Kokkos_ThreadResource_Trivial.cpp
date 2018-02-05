@@ -108,6 +108,8 @@ void ThreadResource::initialize()
 
   #if defined( _OPENMP )
     int num_procs = omp_get_num_procs();
+    // Call openmp so that omp_get_max_threads() will return
+    // the correct value for all use cases
     #pragma omp parallel num_threads(num_procs)
     {
       #pragma omp atomic

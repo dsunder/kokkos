@@ -60,10 +60,10 @@
 
 namespace Kokkos { namespace Impl {
 
-struct Sential
+struct Sentinel
 {
-  Sential() : initialized{true} {}
-  ~Sential();
+  Sentinel() : initialized{true} {}
+  ~Sentinel();
   bool initialized {false};
 };
 
@@ -76,7 +76,7 @@ public:
   {
     if (s_size != 0) return;
 
-    const static Sential sential;
+    const static Sentinel sential;
 
     CPU_ZERO( &s_process );
 
@@ -121,6 +121,7 @@ public:
         s_nodes[j].m_depth = 1;
         s_nodes[j].m_id    = i;
         s_nodes[j].m_index = j;
+        ++j;
       }
     }
   }
@@ -151,7 +152,7 @@ int                     ThreadResource::Pimpl::s_concurrency {0};
 int                     ThreadResource::Pimpl::s_process     {};
 ThreadResource::Pimpl * ThreadResource::Pimpl::s_nodes       {nullptr};
 
-Sential::~Sential()
+Sentinel::~Sentinel()
 {
   if (initialized) {
     ThreadResource::Pimpl::finalize();
@@ -257,7 +258,7 @@ bool ThreadResource::this_thread_set_binding( const ThreadResource res ) noexcep
 void ThreadResource::initialize()
 {
   Pimpl::initialize();
-  const static Sential sential;
+  const static Sentinel sential;
 }
 
 void ThreadResource::finalize()
