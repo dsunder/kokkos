@@ -67,8 +67,11 @@ bool OpenMPExec::s_is_initialized = false;
 int OpenMPExec::s_num_partitions = 0;
 int OpenMPExec::s_partition_size = 0;
 
-CacheBlockedArray< OpenMPExec * > OpenMPExec::s_instances;
-CacheBlockedArray< OpenMPExec * > OpenMPExec::s_partition_instances;
+OpenMPExec * OpenMPExec::s_instance = nullptr;
+
+CacheBlockedArray< OpenMPExec * > OpenMPExec::s_partition_instances{};
+
+
 
 void OpenMPExec::validate_partition( const int nthreads
                                    , int & num_partitions
@@ -159,7 +162,7 @@ void OpenMPExec::clear_thread_data()
 
   OpenMP::memory_space space ;
 
-  #pragma omp parallel num_threads( m_concurrency )
+  #pragma omp parallel num_threads( concurrency() )
   {
     const int rank = omp_get_thread_num();
 
@@ -217,7 +220,7 @@ void OpenMPExec::resize_thread_data( size_t pool_reduce_bytes
 
     memory_fence();
 
-    #pragma omp parallel num_threads(m_concurrency)
+    #pragma omp parallel num_threads(concurrency())
     {
       const int rank = omp_get_thread_num();
 
@@ -245,7 +248,7 @@ void OpenMPExec::resize_thread_data( size_t pool_reduce_bytes
     }
 /* END #pragma omp parallel */
 
-    HostThreadTeamData::organize_pool( m_pool , m_concurrency );
+    HostThreadTeamData::organize_pool( m_pool , concurrency() );
   }
 }
 
@@ -261,23 +264,26 @@ namespace Kokkos {
 
 void OpenMP::initialize( int thread_count )
 {
+  using Exec = Impl::OpenMPExec;
+
   // allow the threads to be reinitialized
-  //if ( Impl::OpenMPExec::s_is_initialized ) return;
+  //if ( Exec::s_is_initialized ) return;
 
-
-  Impl::ThreadResource::initialize();
+  if ( is_initialized() ) return;
 
   if ( omp_in_parallel() ) {
     std::string msg("Kokkos::OpenMP::initialize ERROR : in parallel");
     Kokkos::Impl::throw_runtime_exception(msg);
   }
 
-  if ( Impl::OpenMPExec::s_is_initialized )
-  {
-    finalize();
-  }
 
-  Impl::OpenMPExec::s_is_initialized = true;
+  Exec::s_is_initialized = true;
+
+  Impl::ThreadResource::initialize();
+
+  const int concurrency = Impl::ThreadResource::process().concurrency();
+
+  Exec::s_partition_instances = Impl::CacheBlockedArray< Exec * >( concurrency );
 
   {
     #if !defined(__APPLE__)
@@ -294,22 +300,20 @@ void OpenMP::initialize( int thread_count )
     // Before any other call to OMP query the maximum number of threads
     // and save the value for re-initialization unit testing.
 
-    const int process_num_threads = Impl::ThreadResource::process().concurrency();
-
     // if thread_count  < 0, use omp_get_max_threads();
-    // if thread_count == 0, set to process_num_threads
+    // if thread_count == 0, set to concurrency
     // if thread_count  > 0, set to thread_count
     if (thread_count < 0 ) {
       thread_count = omp_get_max_threads();
     }
-    else if( thread_count == 0 && omp_get_max_threads() != process_num_threads ) {
-      thread_count = process_num_threads;
+    else if( thread_count == 0 && omp_get_max_threads() != concurrency ) {
+      thread_count = concurrency;
       omp_set_num_threads( thread_count );
     }
     else {
-      if( Kokkos::show_warnings() && thread_count > process_num_threads ) {
+      if( Kokkos::show_warnings() && thread_count > concurrency ) {
         printf( "Kokkos::OpenMP::initialize WARNING: You are likely oversubscribing your CPU cores.\n");
-        printf( "  process threads available : %3d,  requested thread : %3d\n", process_num_threads, thread_count );
+        printf( "  process threads available : %3d,  requested thread : %3d\n", concurrency, thread_count );
       }
       omp_set_num_threads(thread_count);
     }
@@ -317,13 +321,14 @@ void OpenMP::initialize( int thread_count )
     // setup thread local
     #pragma omp parallel num_threads(thread_count)
     {
-      Impl::t_openmp_instance = nullptr;
       Impl::SharedAllocationRecord< void, void >::tracking_enable();
     }
 
-    void * const ptr = space.allocate( sizeof(Impl::OpenMPExec) );
+    void * const ptr = space.allocate( sizeof(Exec) );
 
-    Impl::t_openmp_instance = new (ptr) Impl::OpenMPExec( thread_count );
+    Exec::s_instance = new (ptr) Exec( 0 );
+
+
 
     // New, unified host thread team data:
     {
@@ -332,11 +337,11 @@ void OpenMP::initialize( int thread_count )
       size_t team_shared_bytes  = 1024 * thread_count ;
       size_t thread_local_bytes = 1024 ;
 
-      Impl::t_openmp_instance->resize_thread_data( pool_reduce_bytes
-                                                 , team_reduce_bytes
-                                                 , team_shared_bytes
-                                                 , thread_local_bytes
-                                                 );
+      Exec::s_instance->resize_thread_data( pool_reduce_bytes
+                                          , team_reduce_bytes
+                                          , team_shared_bytes
+                                          , thread_local_bytes
+                                          );
     }
   }
 
@@ -360,29 +365,36 @@ void OpenMP::initialize( int thread_count )
 
 void OpenMP::finalize()
 {
+  using Exec = Impl::OpenMPExec;
+
   if ( !Impl::OpenMPExec::s_is_initialized ) return;
 
   if ( omp_in_parallel() )
   {
     std::string msg("Kokkos::OpenMP::finalize ERROR ");
-    if( !Impl::t_openmp_instance ) msg.append(": not initialized");
     if( omp_in_parallel() ) msg.append(": in parallel");
     Kokkos::Impl::throw_runtime_exception(msg);
   }
 
-  if ( Impl::t_openmp_instance ) {
+  if ( Exec::s_instance != nullptr ) {
 
-    using Exec = Impl::OpenMPExec;
-    Exec * instance = Impl::t_openmp_instance;
-    instance->~Exec();
+    Exec::s_instance->~Exec();
 
     OpenMP::memory_space space;
-    space.deallocate( instance, sizeof(Exec) );
+    space.deallocate( Exec::s_instance, sizeof(Exec) );
 
     #pragma omp parallel num_threads(Impl::ThreadResource::process().concurrency())
     {
-      Impl::t_openmp_instance    = nullptr;
       Impl::SharedAllocationRecord< void, void >::tracking_disable();
+    }
+
+    if (Exec::s_num_partitions > 0) {
+      #pragma omp parallel num_threads(Exec::s_num_partitions)
+      {
+        auto tmp = Exec::instance();
+        tmp->~Exec();
+        space.deallocate( tmp, sizeof(Exec) );
+      }
     }
 
     // allow main thread to track

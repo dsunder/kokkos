@@ -115,7 +115,7 @@ void TaskQueueSpecialization< Kokkos::OpenMP >::execute
   HostThreadTeamData & team_data_single =
     HostThreadTeamDataSingleton::singleton();
 
-  Impl::OpenMPExec * instance = t_openmp_instance;
+  Impl::OpenMPExec * instance = Impl::OpenMPExec::instance();
   const int pool_size = OpenMP::thread_pool_size();
 
   const int team_size = 1;  // Threads per core

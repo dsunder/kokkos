@@ -160,7 +160,7 @@ public:
   inline
   ParallelFor( const FunctorType & arg_functor
              , Policy arg_policy )
-    : m_instance( t_openmp_instance )
+    : m_instance( Impl::OpenMPExec::instance() )
     , m_functor( arg_functor )
     , m_policy(  arg_policy )
     {}
@@ -192,7 +192,7 @@ private:
 
   inline static
   void
-  exec_range( const MDRangePolicy & mdr_policy 
+  exec_range( const MDRangePolicy & mdr_policy
             , const FunctorType & functor
             , const Member ibeg , const Member iend )
     {
@@ -243,7 +243,7 @@ public:
           range = is_dynamic ? data.get_work_stealing_chunk()
                              : data.get_work_partition();
 
-          ParallelFor::exec_range( m_mdr_policy 
+          ParallelFor::exec_range( m_mdr_policy
                                  , m_functor
                                  , range.first  + m_policy.begin()
                                  , range.second + m_policy.begin() );
@@ -257,7 +257,7 @@ public:
   inline
   ParallelFor( const FunctorType & arg_functor
              , MDRangePolicy arg_policy )
-    : m_instance( t_openmp_instance )
+    : m_instance( Impl::OpenMPExec::instance() )
     , m_functor( arg_functor )
     , m_mdr_policy( arg_policy )
     , m_policy( Policy(0, m_mdr_policy.m_num_tiles).set_chunk_size(1) )
@@ -414,7 +414,7 @@ public:
                            Kokkos::is_view< ViewType >::value &&
                            !Kokkos::is_reducer_type<ReducerType>::value
                   ,void*>::type = NULL)
-    : m_instance( t_openmp_instance )
+    : m_instance( Impl::OpenMPExec::instance() )
     , m_functor( arg_functor )
     , m_policy(  arg_policy )
     , m_reducer( InvalidType() )
@@ -429,7 +429,7 @@ public:
   ParallelReduce( const FunctorType & arg_functor
                 , Policy       arg_policy
                 , const ReducerType& reducer )
-    : m_instance( t_openmp_instance )
+    : m_instance( Impl::OpenMPExec::instance() )
     , m_functor( arg_functor )
     , m_policy(  arg_policy )
     , m_reducer( reducer )
@@ -579,7 +579,7 @@ public:
                            Kokkos::is_view< ViewType >::value &&
                            !Kokkos::is_reducer_type<ReducerType>::value
                   ,void*>::type = NULL)
-    : m_instance( t_openmp_instance )
+    : m_instance( Impl::OpenMPExec::instance() )
     , m_functor( arg_functor )
     , m_mdr_policy(  arg_policy )
     , m_policy( Policy(0, m_mdr_policy.m_num_tiles).set_chunk_size(1) )
@@ -595,7 +595,7 @@ public:
   ParallelReduce( const FunctorType & arg_functor
                 , MDRangePolicy       arg_policy
                 , const ReducerType& reducer )
-    : m_instance( t_openmp_instance )
+    : m_instance( Impl::OpenMPExec::instance() )
     , m_functor( arg_functor )
     , m_mdr_policy(  arg_policy )
     , m_policy( Policy(0, m_mdr_policy.m_num_tiles).set_chunk_size(1) )
@@ -741,7 +741,7 @@ public:
   inline
   ParallelScan( const FunctorType & arg_functor
               , const Policy      & arg_policy )
-    : m_instance( t_openmp_instance )
+    : m_instance( Impl::OpenMPExec::instance() )
     , m_functor( arg_functor )
     , m_policy(  arg_policy )
   {}
@@ -886,7 +886,7 @@ public:
   inline
   ParallelFor( const FunctorType & arg_functor ,
                const Policy      & arg_policy )
-    : m_instance( t_openmp_instance )
+    : m_instance( Impl::OpenMPExec::instance() )
     , m_functor( arg_functor )
     , m_policy(  arg_policy )
     , m_shmem_size( arg_policy.scratch_size(0) +
@@ -1089,7 +1089,7 @@ public:
                     Kokkos::is_view< ViewType >::value &&
                     !Kokkos::is_reducer_type<ReducerType>::value
                     ,void*>::type = NULL)
-    : m_instance( t_openmp_instance )
+    : m_instance( Impl::OpenMPExec::instance() )
     , m_functor( arg_functor )
     , m_policy(  arg_policy )
     , m_reducer( InvalidType() )
@@ -1104,7 +1104,7 @@ public:
   ParallelReduce( const FunctorType & arg_functor
     , Policy       arg_policy
     , const ReducerType& reducer )
-  : m_instance( t_openmp_instance )
+  : m_instance( Impl::OpenMPExec::instance() )
   , m_functor( arg_functor )
   , m_policy(  arg_policy )
   , m_reducer( reducer )

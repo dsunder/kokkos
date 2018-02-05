@@ -93,10 +93,9 @@ public:
                                 );
 
 private:
-  OpenMPExec( int arg_pool_size, int arg_master_tid )
-    : m_concurrency{ arg_pool_size }
-    , m_master_tid{ arg_master_tid }
-    , m_pool( arg_pool_size )
+  OpenMPExec( int arg_master_tid )
+    : m_master_tid{ arg_master_tid }
+    , m_pool( concurrency() )
   {}
 
   ~OpenMPExec()
@@ -104,7 +103,6 @@ private:
     clear_thread_data();
   }
 
-  int m_concurrency;
   int m_master_tid;
 
   CacheBlockedArray< HostThreadTeamData * > m_pool;
@@ -115,7 +113,7 @@ private:
   static int s_num_partitions;
   static int s_partition_size;
 
-  static CacheBlockedArray< OpenMPExec * > s_instances;
+  static OpenMPExec * s_instance;
   static CacheBlockedArray< OpenMPExec * > s_partition_instances;
 
 public:
@@ -123,7 +121,7 @@ public:
   static OpenMPExec * instance() noexcept
   {
     return !s_is_partitioned
-         ? s_instances[tid()]
+         ? s_instance
          : s_partition_instances[tid()]
          ;
   }
@@ -131,7 +129,7 @@ public:
   static void set_instance( OpenMPExec * ptr ) noexcept
   {
     if (!s_is_partitioned) {
-      s_instances[tid()] = ptr;
+      s_instance = ptr;
     }
     else {
       s_partition_instances[tid()] = ptr;
@@ -155,21 +153,23 @@ public:
 
   static void verify_is_master( const char * const );
 
-  static int concurrency() noexcept { return !in_parallel() ? omp_get_max_threads() : omp_get_num_threads(); }
-
-  static int pool_size()   noexcept { return in_parallel() ? omp_get_num_threads() : omp_get_max_threads(); }
+  static int concurrency() noexcept
+  {
+    return !in_parallel()
+         ? omp_get_max_threads()
+         : omp_get_num_threads()
+         ;
+  }
 
   static int pool_rank()   noexcept
   {
     return !Impl::OpenMPExec::is_partitioned() || omp_get_level() >= 2
          ?  omp_get_thread_num()
-         :  omp_get_level() < 2
-         ?  0
-         :  omp_get_ancestor_thread_num(2) // Kokkos only nests to the 2nd level
+         :  0
          ;
   }
 
-  bool in_parallel() const noexcept
+  static bool in_parallel() noexcept
   {
     return omp_in_parallel() && ( !s_is_partitioned || omp_get_level() > 2 );
   }
@@ -203,7 +203,7 @@ bool OpenMP::is_initialized() noexcept
 inline
 bool OpenMP::in_parallel( OpenMP const& ) noexcept
 {
-  return !Impl::t_openmp_instance || Impl::t_openmp_instance->in_parallel();
+  Impl::OpenMPExec::in_parallel();
 }
 
 inline
@@ -234,7 +234,7 @@ void OpenMP::partition_master( F const& f
         #pragma omp parallel num_threads(Exec::s_num_partitions) proc_bind(spread)
         {
           auto tmp = Exec::instance();
-          temp->~Exec();
+          tmp->~Exec();
 
           space.deallocate( tmp, sizeof(Exec) );
         }
@@ -248,7 +248,7 @@ void OpenMP::partition_master( F const& f
       #pragma omp parallel num_threads(Exec::s_num_partitions) proc_bind(spread)
       {
         void * const ptr = space.allocate( sizeof(Exec) );
-        Exec * tmp = new (ptr) Exec( partition_size, Exec::tid() );
+        Exec * tmp = new (ptr) Exec( Exec::tid() );
 
         omp_set_num_threads(Exec::s_partition_size);
 
@@ -327,7 +327,7 @@ public:
   int size() const noexcept
     {
       #if defined( KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST )
-      return Impl::OpenMPExec::pool_size();
+      return Impl::OpenMPExec::concurrency();
       #else
       return 0 ;
       #endif
