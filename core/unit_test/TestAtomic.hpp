@@ -59,44 +59,13 @@ struct SuperScalar {
   }
 
   KOKKOS_INLINE_FUNCTION
-  SuperScalar( const SuperScalar & src ) {
-    for ( int i = 0; i < N; i++ ) {
-      val[i] = src.val[i];
-    }
-  }
+  SuperScalar( const SuperScalar & src ) = default;
 
   KOKKOS_INLINE_FUNCTION
-  SuperScalar( const volatile SuperScalar & src ) {
-    for ( int i = 0; i < N; i++ ) {
-      val[i] = src.val[i];
-    }
-  }
+  SuperScalar& operator=( const SuperScalar & src ) = default;
 
   KOKKOS_INLINE_FUNCTION
-  SuperScalar& operator=( const SuperScalar & src ) {
-    for ( int i = 0; i < N; i++ ) {
-      val[i] = src.val[i];
-    }
-    return *this;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  SuperScalar& operator=( const volatile SuperScalar & src ) {
-    for ( int i = 0; i < N; i++ ) {
-      val[i] = src.val[i];
-    }
-    return *this;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  void operator=( const SuperScalar & src ) volatile  {
-    for ( int i = 0; i < N; i++ ) {
-      val[i] = src.val[i];
-    }
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  SuperScalar operator+( const SuperScalar & src ) {
+  SuperScalar operator+( const SuperScalar & src ) const {
     SuperScalar tmp = *this;
     for ( int i = 0; i < N; i++ ) {
       tmp.val[i] += src.val[i];

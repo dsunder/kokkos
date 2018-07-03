@@ -67,6 +67,7 @@ mkdir:
 	mkdir -p $(PREFIX)/include
 	mkdir -p $(PREFIX)/lib
 	mkdir -p $(PREFIX)/include/impl
+	mkdir -p $(PREFIX)/include/atomic
 
 copy-cuda: mkdir
 	mkdir -p $(PREFIX)/include/Cuda
@@ -92,6 +93,7 @@ install: mkdir $(CONDITIONAL_COPIES) build-lib generate_build_settings
 	cp $(COPY_FLAG) $(NVCC_WRAPPER) $(PREFIX)/bin
 	cp $(COPY_FLAG) $(KOKKOS_HEADERS_INCLUDE) $(PREFIX)/include
 	cp $(COPY_FLAG) $(KOKKOS_HEADERS_INCLUDE_IMPL) $(PREFIX)/include/impl
+	cp $(COPY_FLAG) $(KOKKOS_HEADERS_INCLUDE_ATOMIC) $(PREFIX)/include/atomic
 	cp $(COPY_FLAG) $(KOKKOS_MAKEFILE)  $(PREFIX)
 	cp $(COPY_FLAG) $(KOKKOS_CMAKEFILE)  $(PREFIX)
 	cp $(COPY_FLAG) libkokkos.a $(PREFIX)/lib

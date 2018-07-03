@@ -41,6 +41,16 @@ IF(KOKKOS_LEGACY_TRIBITS)
 
   #-----------------------------------------------------------------------------
 
+  FILE(GLOB HEADERS_ATOMIC atomic/*.hpp)
+  FILE(GLOB SOURCES_ATOMIC atomic/*.cpp)
+
+  LIST(APPEND HEADERS_PRIVATE ${HEADERS_ATOMIC} )
+  LIST(APPEND SOURCES         ${SOURCES_ATOMIC} )
+
+  INSTALL(FILES ${HEADERS_ATOMIC} DESTINATION ${TRILINOS_INCDIR}/atomic/)
+
+  #-----------------------------------------------------------------------------
+
   FILE(GLOB HEADERS_THREADS Threads/*.hpp)
   FILE(GLOB SOURCES_THREADS Threads/*.cpp)
 

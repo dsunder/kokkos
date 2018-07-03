@@ -1,10 +1,11 @@
 # Build a List of Header Files
 
-KOKKOS_HEADERS_INCLUDE       = $(wildcard $(KOKKOS_PATH)/core/src/*.hpp)
-KOKKOS_HEADERS_INCLUDE_IMPL  = $(wildcard $(KOKKOS_PATH)/core/src/impl/*.hpp)
-KOKKOS_HEADERS_INCLUDE      += $(wildcard $(KOKKOS_PATH)/containers/src/*.hpp)
-KOKKOS_HEADERS_INCLUDE_IMPL += $(wildcard $(KOKKOS_PATH)/containers/src/impl/*.hpp)
-KOKKOS_HEADERS_INCLUDE      += $(wildcard $(KOKKOS_PATH)/algorithms/src/*.hpp)
+KOKKOS_HEADERS_INCLUDE         = $(wildcard $(KOKKOS_PATH)/core/src/*.hpp)
+KOKKOS_HEADERS_INCLUDE_IMPL    = $(wildcard $(KOKKOS_PATH)/core/src/impl/*.hpp)
+KOKKOS_HEADERS_INCLUDE_ATOMIC  = $(wildcard $(KOKKOS_PATH)/core/src/atomic/*.hpp)
+KOKKOS_HEADERS_INCLUDE        += $(wildcard $(KOKKOS_PATH)/containers/src/*.hpp)
+KOKKOS_HEADERS_INCLUDE_IMPL   += $(wildcard $(KOKKOS_PATH)/containers/src/impl/*.hpp)
+KOKKOS_HEADERS_INCLUDE        += $(wildcard $(KOKKOS_PATH)/algorithms/src/*.hpp)
 
 ifeq ($(KOKKOS_INTERNAL_USE_CUDA), 1)
   KOKKOS_HEADERS_CUDA += $(wildcard $(KOKKOS_PATH)/core/src/Cuda/*.hpp)
