@@ -55,89 +55,103 @@ namespace Kokkos {
 namespace Impl {
 
 //----------------------------------------------------------------------------
-// Help with C++11 variadic argument packs
-
-template< unsigned I , typename ... Pack >
-struct get_type { typedef void type ; };
-
-template< typename T , typename ... Pack >
-struct get_type< 0 , T , Pack ... >
-{ typedef T type ; };
-
-template< unsigned I , typename T , typename ... Pack >
-struct get_type< I , T , Pack ... >
-{ typedef typename get_type< I - 1 , Pack ... >::type type ; };
-
-
-template< typename T , typename ... Pack >
-struct has_type { enum { value = false }; };
-
-template< typename T , typename S , typename ... Pack >
-struct has_type<T,S,Pack...>
-{
-private:
-
-  enum { self_value = std::is_same<T,S>::value };
-
-  typedef has_type<T,Pack...> next ;
-
-  static_assert( ! ( self_value && next::value )
-               , "Error: more than one member of the argument pack matches the type" );
-
-public:
-
-  enum { value = self_value || next::value };
-
+template <unsigned I, typename... Pack>
+struct get_type {
+  static_assert(sizeof...(Pack) == 0u, "Error: should only match the base case");
+  using type = void;
 };
 
+template <typename T, typename... Pack>
+struct get_type<0u, T, Pack...>
+{ using type = T; };
+
+template <unsigned I, typename T, typename... Pack>
+struct get_type<I, T, Pack...>
+  : public get_type<I-1u, Pack...> {};
+//----------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------
+template <typename T, typename... Pack>
+struct has_type
+{
+  static_assert(sizeof...(Pack) == 0u, "Error: should only match the base case");
+  static constexpr bool value = false;
+};
+
+template <typename T, typename... Pack>
+struct has_type< T, T, Pack...>
+{
+  static constexpr bool value = true;
+  static_assert( has_type<T, Pack...>::value == false
+               , "Error: more than one member of the argument pack matches the type"
+               );
+};
+
+template <typename T, typename U, typename... Pack>
+struct has_type< T, U, Pack...>
+  : public has_type <T, Pack...>
+{};
+//----------------------------------------------------------------------------
+
+
+//----------------------------------------------------------------------------
+template < template <typename> class Condition
+         , bool Value
+         , typename Type
+         , typename... Pack
+         >
+struct has_condition_impl
+{
+  static_assert(sizeof...(Pack) == 0u, "Error: should only match the base case");
+  static constexpr bool value = Value;
+  using type = Type;
+};
+
+template < template <typename> class Condition
+         , bool Value
+         , typename Type
+         , typename Head
+         , typename... Pack
+         >
+struct has_condition_impl< Condition, Value, Type, Head, Pack...>
+  : public has_condition_impl< Condition
+                             , Value || Condition<Head>::value
+                             , typename std::conditional< Condition<Head>::value, Head, Type >::type
+                             , Pack...
+                             >
+{
+  static_assert( !(Value && Condition<Head>::value)
+               , "Error: more than one member of the argument pack satisfies condition"
+               );
+};
 
 template< typename DefaultType
         , template< typename > class Condition
         , typename ... Pack >
 struct has_condition
-{
-  enum { value = false };
-  typedef DefaultType type ;
+  : public has_condition_impl< Condition, false, DefaultType, Pack...>
+{};
+//----------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------
+template <bool Value, typename... Types>
+struct are_integral_impl {
+  static_assert(sizeof...(Types) == 0u, "Error: should only match the base case");
+  static constexpr bool value = Value;
 };
 
-template< typename DefaultType
-        , template< typename > class Condition
-        , typename S
-        , typename ... Pack >
-struct has_condition< DefaultType , Condition , S , Pack... >
-{
-private:
+template <bool Value, typename T, typename... Types>
+struct are_integral_impl<Value, T, Types...>
+  : public are_integral_impl< Value && (std::is_integral<T>::value || std::is_enum<T>::value)
+                            , Types...
+                            >
+{};
 
-  enum { self_value = Condition<S>::value };
+template <typename... Types>
+struct are_integral : public are_integral_impl< true, Types...> {};
 
-  typedef has_condition< DefaultType , Condition , Pack... > next ;
-
-  static_assert( ! ( self_value && next::value )
-               , "Error: more than one member of the argument pack satisfies condition" );
-
-public:
-
-  enum { value = self_value || next::value };
-
-  typedef typename
-    std::conditional< self_value , S , typename next::type >::type
-      type ;
-};
-
-
-template< class ... Args >
-struct are_integral { enum { value = true }; };
-
-template< typename T , class ... Args >
-struct are_integral<T,Args...> {
-  enum { value =
-    // Accept std::is_integral OR std::is_enum as an integral value
-    // since a simple enum value is automically convertable to an
-    // integral value.
-    ( std::is_integral<T>::value || std::is_enum<T>::value )
-    &&
-    are_integral<Args...>::value };
-};
+template <>
+struct are_integral<> { static constexpr bool value = false; };
 
 //----------------------------------------------------------------------------
 /* C++11 conformal compile-time type traits utilities.
@@ -146,71 +160,31 @@ struct are_integral<T,Args...> {
 //----------------------------------------------------------------------------
 // C++11 Helpers:
 
-template < class T , T v >
-struct integral_constant
-{
-  // Declaration of 'static const' causes an unresolved linker symbol in debug
-  // static const T value = v ;
-  enum { value = T(v) };
-  typedef T value_type;
-  typedef integral_constant<T,v> type;
-  KOKKOS_INLINE_FUNCTION operator T() { return v ; }
-};
+template <typename T, T v>
+using integral_constant = std::integral_constant<T,v>;
 
-typedef integral_constant<bool,false> false_type ;
-typedef integral_constant<bool,true>  true_type ;
+using false_type = std::false_type;
+using true_type  = std::true_type;
 
 //----------------------------------------------------------------------------
-// C++11 Type relationships:
+// C++11 type_traits
 
-template< class X , class Y > struct is_same : public false_type {};
-template< class X >           struct is_same<X,X> : public true_type {};
+template< class T , class U > using is_same = std::is_same<T,U>;
 
-//----------------------------------------------------------------------------
-// C++11 Type properties:
+template< class T > using is_const = std::is_const<T>;
+template< class T > using is_array = std::is_array<T>;
 
-template <typename T> struct is_const : public false_type {};
-template <typename T> struct is_const<const T> : public true_type {};
-template <typename T> struct is_const<const T & > : public true_type {};
+template< class T > using add_const        = std::add_const<T>;
+template< class T > using remove_const     = std::remove_const<T>;
+template< class T > using remove_reference = std::remove_reference<T>;
 
-template <typename T> struct is_array : public false_type {};
-template <typename T> struct is_array< T[] > : public true_type {};
-template <typename T, unsigned N > struct is_array< T[N] > : public true_type {};
-
-//----------------------------------------------------------------------------
-// C++11 Type transformations:
-
-template <typename T> struct remove_const { typedef T type; };
-template <typename T> struct remove_const<const T> { typedef T type; };
-template <typename T> struct remove_const<const T & > { typedef T & type; };
-
-template <typename T> struct add_const { typedef const T type; };
-template <typename T> struct add_const<T & > { typedef const T & type; };
-template <typename T> struct add_const<const T> { typedef const T type; };
-template <typename T> struct add_const<const T & > { typedef const T & type; };
-
-template <typename T> struct remove_reference { typedef T type ; };
-template <typename T> struct remove_reference< T & > { typedef T type ; };
-template <typename T> struct remove_reference< const T & > { typedef const T type ; };
-
-template <typename T> struct remove_extent { typedef T type ; };
-template <typename T> struct remove_extent<T[]> { typedef T type ; };
-template <typename T, unsigned N > struct remove_extent<T[N]> { typedef T type ; };
+template< class T > using remove_extent = std::remove_extent<T>;
 
 //----------------------------------------------------------------------------
 // C++11 Other type generators:
 
-template< bool , class T , class F >
-struct condition { typedef F type ; };
-
-template< class T , class F >
-struct condition<true,T,F> { typedef T type ; };
-
-template< bool , class = void >
-struct enable_if ;
-
-template< class T >
-struct enable_if< true , T > { typedef T type ; };
+template< bool Cond, class T= void >
+using enable_if = std::enable_if<Cond,T>;
 
 //----------------------------------------------------------------------------
 
@@ -227,23 +201,18 @@ namespace Impl {
 //----------------------------------------------------------------------------
 
 template< class , class T = void >
-struct enable_if_type { typedef T type ; };
+struct enable_if_type { using type = T; };
 
 //----------------------------------------------------------------------------
 
-template< bool B >
-struct bool_ : public integral_constant<bool,B> {};
-
-template< unsigned I >
-struct unsigned_ : public integral_constant<unsigned,I> {};
-
-template< int I >
-struct int_ : public integral_constant<int,I> {};
-
-typedef bool_<true> true_;
-typedef bool_<false> false_;
 //----------------------------------------------------------------------------
-// if_
+
+
+template < bool Cond , typename TrueType , typename FalseType>
+using conditional = std::conditional< Cond, TrueType, FalseType >;
+
+template < bool Cond , typename TrueType , typename FalseType>
+using conditional_t = typename std::conditional< Cond, TrueType, FalseType >::type;
 
 template < bool Cond , typename TrueType , typename FalseType>
 struct if_c
@@ -329,36 +298,10 @@ struct if_c< true , void , FalseType >
   typedef void value_type ;
 };
 
-template <typename Cond, typename TrueType, typename FalseType>
-struct if_ : public if_c<Cond::value, TrueType, FalseType> {};
-
 //----------------------------------------------------------------------------
 
-// Allows aliased types:
-template< typename T >
-struct is_integral : public integral_constant< bool ,
-  (
-    std::is_same< T ,          char >::value ||
-    std::is_same< T , unsigned char >::value ||
-    std::is_same< T ,          short int >::value ||
-    std::is_same< T , unsigned short int >::value ||
-    std::is_same< T ,          int >::value ||
-    std::is_same< T , unsigned int >::value ||
-    std::is_same< T ,          long int >::value ||
-    std::is_same< T , unsigned long int >::value ||
-    std::is_same< T ,          long long int >::value ||
-    std::is_same< T , unsigned long long int >::value ||
-
-    std::is_same< T , int8_t   >::value ||
-    std::is_same< T , int16_t  >::value ||
-    std::is_same< T , int32_t  >::value ||
-    std::is_same< T , int64_t  >::value ||
-    std::is_same< T , uint8_t  >::value ||
-    std::is_same< T , uint16_t >::value ||
-    std::is_same< T , uint32_t >::value ||
-    std::is_same< T , uint64_t >::value
-  )>
-{};
+template <typename T>
+using is_integral = std::is_integral<T>;
 //----------------------------------------------------------------------------
 
 template<typename T>
@@ -470,48 +413,6 @@ struct integral_nonzero_constant<T,zero,false>
 
 //----------------------------------------------------------------------------
 
-template < class C > struct is_integral_constant : public false_
-{
-  typedef void integral_type ;
-  enum { integral_value = 0 };
-};
-
-template < typename T , T v >
-struct is_integral_constant< integral_constant<T,v> > : public true_
-{
-  typedef T integral_type ;
-  enum { integral_value = v };
-};
-
-//----------------------------------------------------------------------------
-
-template <class...>
-class TypeList;
-
-//----------------------------------------------------------------------------
-
-template <class>
-struct ReverseTypeList;
-
-template <class Head, class... Tail>
-struct ReverseTypeList<TypeList<Head, Tail...>> {
-  template <class... ReversedTail>
-  struct impl {
-    using type = typename ReverseTypeList<TypeList<Tail...>>::template impl<Head, ReversedTail...>::type;
-  };
-  using type = typename impl<>::type;
-};
-
-template <>
-struct ReverseTypeList<TypeList<>> {
-  template <class... ReversedTail>
-  struct impl {
-    using type = TypeList<ReversedTail...>;
-  };
-  using type = TypeList<>;
-};
-
-//----------------------------------------------------------------------------
 
 template <class T>
 struct make_all_extents_into_pointers

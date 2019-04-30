@@ -1,13 +1,13 @@
 /*
 //@HEADER
 // ************************************************************************
-// 
+//
 //                        Kokkos v. 2.0
 //              Copyright (2014) Sandia Corporation
-// 
+//
 // Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
 // the U.S. Government retains certain rights in this software.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
 // met:
@@ -36,7 +36,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 // Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-// 
+//
 // ************************************************************************
 //@HEADER
 */
@@ -110,10 +110,10 @@ class VectorImport {
 private:
 
   // rank == 1 or array_layout == LayoutRight
-  enum { OK = Kokkos::Impl::StaticAssert<
-           ( VectorType::rank == 1 ) ||
-           std::is_same< typename VectorType::array_layout , Kokkos::LayoutRight >::value
-         >::value };
+  static_assert( VectorType::rank == 1
+                 || std::is_same< typename VectorType::array_layout , Kokkos::LayoutRight >::value
+               , ""
+               );
 
   typedef typename VectorType::HostMirror HostVectorType ;
 
@@ -214,7 +214,7 @@ public:
 
     MPI_Barrier( comm );
 
-    { // Pack and send 
+    { // Pack and send
       const Pack pack( send_nodeid , v , send_buffer );
 
       Kokkos::deep_copy( host_send_buffer , send_buffer );
