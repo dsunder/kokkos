@@ -374,6 +374,7 @@ template < typename DefaultType
          , template <typename> class Condition
          , typename List
          , bool Value = false
+         , typename ModifiedList = TypeList<>
          >
 struct TypeListFind;
 
@@ -382,26 +383,29 @@ template < typename Type
          , typename T
          , typename... Tail
          , bool Value
+         , typename... Head
          >
-struct TypeListFind<Type, Condition, TypeList<T,Tail...>, Value>
+struct TypeListFind<Type, Condition, TypeList<T,Tail...>, Value, TypeList<Head...>>
   : conditional_t< Condition<T>::value
-                 , TypeListFind<T,    Condition, TypeList<Tail...>, true>
-                 , TypeListFind<Type, Condition, TypeList<Tail...>, Value>
+                 , TypeListFind<T,    Condition, TypeList<Tail...>, true,  TypeList<Head...>>
+                 , TypeListFind<Type, Condition, TypeList<Tail...>, Value, TypeList<Head...,T>>
                  >
 {
   static_assert( !(Value && Condition<T>::value)
-               , "Error: more than one member of the parameter pack satisfies the condition."
+               , "Kokkos Error: More than one member of the parameter pack satisfies the condition."
                );
 };
 
 template < typename Type
          , template <typename> class Condition
          , bool Value
+         , typename... Types
          >
-struct TypeListFind<Type, Condition, TypeList<>, Value>
+struct TypeListFind<Type, Condition, TypeList<>, Value, TypeList<Types...>>
 {
   static constexpr bool value = Value;
   using type = Type;
+  using modified_list = TypeList<Types...>;
 };
 
 template< typename DefaultType

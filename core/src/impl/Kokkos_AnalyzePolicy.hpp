@@ -60,7 +60,7 @@ template < typename ExecutionSpace   = void
          >
 struct PolicyTraitsBase
 {
-  using type = PolicyTraitsBase< ExecutionSpace, Schedule, WorkTag, IndexType, 
+  using type = PolicyTraitsBase< ExecutionSpace, Schedule, WorkTag, IndexType,
                IterationPattern, LaunchBounds, MyWorkItemProperty>;
 
   using execution_space   = ExecutionSpace;
@@ -179,72 +179,64 @@ struct SetLaunchBounds
                                >;
 };
 
+template <typename List> struct FindWorkTag;
 
-template <typename Base, typename... Traits>
-struct AnalyzePolicy;
-
-template <typename Base, typename T, typename... Traits>
-struct AnalyzePolicy<Base, T, Traits...> : public
-  AnalyzePolicy<
-      typename std::conditional< is_execution_space<T>::value  , SetExecutionSpace<Base,T>
-    , typename std::conditional< is_schedule_type<T>::value    , SetSchedule<Base,T>
-    , typename std::conditional< is_index_type<T>::value       , SetIndexType<Base,T>
-    , typename std::conditional< std::is_integral<T>::value    , SetIndexType<Base, IndexType<T> >
-    , typename std::conditional< is_iteration_pattern<T>::value, SetIterationPattern<Base,T>
-    , typename std::conditional< is_launch_bounds<T>::value    , SetLaunchBounds<Base,T>
-    , typename std::conditional< Experimental::is_work_item_property<T>::value, SetWorkItemProperty<Base,T>
-    , SetWorkTag<Base,T>
-    >::type >::type >::type >::type >::type>::type>::type::type
-  , Traits...
-  >
-{};
-
-template <typename Base>
-struct AnalyzePolicy<Base>
-{
-  using execution_space = typename std::conditional< is_void< typename Base::execution_space >::value
-                                                   , DefaultExecutionSpace
-                                                   , typename Base::execution_space
-                                                   >::type;
-
-  using schedule_type = typename std::conditional< is_void< typename Base::schedule_type >::value
-                                                 , Schedule< Static >
-                                                 , typename Base::schedule_type
-                                                 >::type;
-
-  using work_tag = typename Base::work_tag;
-
-  using index_type = typename std::conditional< is_void< typename Base::index_type >::value
-                                              , IndexType< typename execution_space::size_type >
-                                              , typename Base::index_type
-                                              >::type
-                                               ::type // nasty hack to make index_type into an integral_type
-                                              ;       // instead of the wrapped IndexType<T> for backwards compatibility
-
-  using iteration_pattern = typename std::conditional< is_void< typename Base::iteration_pattern >::value
-                                                     , void // TODO set default iteration pattern
-                                                     , typename Base::iteration_pattern
-                                                     >::type;
-
-  using launch_bounds = typename std::conditional< is_void< typename Base::launch_bounds >::value
-                                                     , LaunchBounds<>
-                                                     , typename Base::launch_bounds
-                                                     >::type;
-
-  using work_item_property = typename Base::work_item_property;
-
-  using type = PolicyTraitsBase< execution_space
-                               , schedule_type
-                               , work_tag
-                               , index_type
-                               , iteration_pattern
-                               , launch_bounds
-                               , work_item_property>;
+template <typename T, typename... Types> struct FindWorkTag<TypeList<T, Types...>> {
+  static constexpr bool value = true;
+  using type = T;
+  using modified_list = TypeList<Types...>;
 };
+
+template <> struct FindWorkTag<TypeList<>> {
+  static constexpr bool value = false;
+  using type = void;
+  using modified_list = TypeList<>;
+};
+
+template <typename T>
+using is_index_or_integral_type = std::integral_constant< bool, is_index_type<T>::value || std::is_integral<T>::value>;
+
+template <typename... Traits>
+struct AnalyzePolicy
+{
+  using find_execution_space   = TypeListFind< DefaultExecutionSpace, is_execution_space, TypeList<Traits...>>;
+  using find_schedule_type     = TypeListFind< Schedule< Static >, is_schedule_type, typename find_execution_space::modified_list>;
+  using find_index_type        = TypeListFind< typename find_execution_space::type::size_type, is_index_or_integral_type, typename find_schedule_type::modified_list>;
+  // TODO: choose a good default for the iteration pattern
+  using find_iteration_pattern = TypeListFind< void, is_iteration_pattern, typename find_index_type::modified_list>;
+  using find_launch_bounds     = TypeListFind< LaunchBounds<>, is_launch_bounds, typename find_iteration_pattern::modified_list>;
+
+  using find_work_item_property = TypeListFind< Kokkos::Experimental::WorkItemProperty::None_t
+                                              , Kokkos::Experimental::is_work_item_property
+                                              , typename find_launch_bounds::modified_list>;
+
+  // if there is a Type remaining in the list it is the WorkTag
+  using find_work_tag = FindWorkTag<typename find_work_item_property::modified_list>;
+
+  static_assert( TypeListSize<typename find_work_tag::modified_list>::value == 0u
+               , "Kokkos Error: Unknown parameters passed to the execution policy." );
+
+  using index_type_impl = typename find_index_type::type;
+  using index_type = conditional_t< std::is_integral< index_type_impl >::value
+                                  , xType<index_type_impl>
+                                  , index_type_impl
+                                  >;
+
+  using type = PolicyTraitsBase< typename find_execution_space::type
+                               , typename find_schedule_type::type
+                               , typename find_work_item_property::type
+                               , index_type
+                               , typename find_iteration_pattern::type
+                               , typename find_launch_bounds::type
+                               , typename find_work_item_property::type
+                              >;
+
+};
+
 
 template <typename... Traits>
 struct PolicyTraits
-  : public AnalyzePolicy< PolicyTraitsBase<>, Traits... >::type
+  : public AnalyzePolicy<Traits...>::type
 {};
 
 }} // namespace Kokkos::Impl
