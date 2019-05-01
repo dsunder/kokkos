@@ -95,45 +95,6 @@ struct has_type< T, U, Pack...>
 
 
 //----------------------------------------------------------------------------
-template < template <typename> class Condition
-         , bool Value
-         , typename Type
-         , typename... Pack
-         >
-struct has_condition_impl
-{
-  static_assert(sizeof...(Pack) == 0u, "Error: should only match the base case");
-  static constexpr bool value = Value;
-  using type = Type;
-};
-
-template < template <typename> class Condition
-         , bool Value
-         , typename Type
-         , typename Head
-         , typename... Pack
-         >
-struct has_condition_impl< Condition, Value, Type, Head, Pack...>
-  : public has_condition_impl< Condition
-                             , Value || Condition<Head>::value
-                             , typename std::conditional< Condition<Head>::value, Head, Type >::type
-                             , Pack...
-                             >
-{
-  static_assert( !(Value && Condition<Head>::value)
-               , "Error: more than one member of the argument pack satisfies condition"
-               );
-};
-
-template< typename DefaultType
-        , template< typename > class Condition
-        , typename ... Pack >
-struct has_condition
-  : public has_condition_impl< Condition, false, DefaultType, Pack...>
-{};
-//----------------------------------------------------------------------------
-
-//----------------------------------------------------------------------------
 template <bool Value, typename... Types>
 struct are_integral_impl {
   static_assert(sizeof...(Types) == 0u, "Error: should only match the base case");
@@ -206,14 +167,6 @@ struct enable_if_type { using type = T; };
 //----------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------
-
-
-template < bool Cond , typename TrueType , typename FalseType>
-using conditional = std::conditional< Cond, TrueType, FalseType >;
-
-template < bool Cond , typename TrueType , typename FalseType>
-using conditional_t = typename std::conditional< Cond, TrueType, FalseType >::type;
-
 template < bool Cond , typename TrueType , typename FalseType>
 struct if_c
 {
@@ -297,13 +250,9 @@ struct if_c< true , void , FalseType >
   typedef void type ;
   typedef void value_type ;
 };
-
 //----------------------------------------------------------------------------
 
-template <typename T>
-using is_integral = std::is_integral<T>;
 //----------------------------------------------------------------------------
-
 template<typename T>
 struct is_label : public false_type {};
 
@@ -326,6 +275,7 @@ struct is_label<const std::string> : public true_type {};
 
 template<>
 struct is_label<std::string> : public true_type {};
+//----------------------------------------------------------------------------
 
 // These 'constexpr'functions can be used as
 // both regular functions and meta-function.
@@ -349,33 +299,6 @@ constexpr unsigned integral_power_of_two( const size_t N )
 
 //----------------------------------------------------------------------------
 
-template < size_t N >
-struct is_power_of_two
-{
-  enum type { value = (N > 0) && !(N & (N-1)) };
-};
-
-template < size_t N , bool OK = is_power_of_two<N>::value >
-struct power_of_two ;
-
-template < size_t N >
-struct power_of_two<N,true>
-{
-  enum type { value = 1+ power_of_two<(N>>1),true>::value };
-};
-
-template <>
-struct power_of_two<2,true>
-{
-  enum type { value = 1 };
-};
-
-template <>
-struct power_of_two<1,true>
-{
-  enum type { value = 0 };
-};
-
 /** \brief  If power of two then return power,
  *          otherwise return ~0u.
  */
@@ -394,21 +317,19 @@ unsigned power_of_two_if_valid( const unsigned N )
 template< typename T , T v , bool NonZero = ( v != T(0) ) >
 struct integral_nonzero_constant
 {
-  // Declaration of 'static const' causes an unresolved linker symbol in debug
-  // static const T value = v ;
-  enum { value = T(v) };
-  typedef T value_type ;
-  typedef integral_nonzero_constant<T,v> type ;
-  KOKKOS_INLINE_FUNCTION integral_nonzero_constant( const T & ) {}
+  using type = integral_nonzero_constant<T,v>;
+  using value_type = T;
+  static constexpr T value = v;
+  KOKKOS_INLINE_FUNCTION integral_nonzero_constant( const T & ) noexcept {};
 };
 
-template< typename T , T zero >
+template< typename T, T zero >
 struct integral_nonzero_constant<T,zero,false>
 {
-  const T value ;
-  typedef T value_type ;
-  typedef integral_nonzero_constant<T,0> type ;
-  KOKKOS_INLINE_FUNCTION integral_nonzero_constant( const T & v ) : value(v) {}
+  using type = integral_nonzero_constant<T,zero>;
+  using value_type = T;
+  const T value;
+  KOKKOS_INLINE_FUNCTION integral_nonzero_constant( const T & v ) noexcept : value(v) {}
 };
 
 //----------------------------------------------------------------------------
@@ -431,6 +352,62 @@ struct make_all_extents_into_pointers<T*>
 {
   using type = typename make_all_extents_into_pointers<T>::type*;
 };
+
+
+//----------------------------------------------------------------------------
+template < bool Cond , typename TrueType , typename FalseType>
+using conditional = std::conditional< Cond, TrueType, FalseType >;
+
+template < bool Cond , typename TrueType , typename FalseType>
+using conditional_t = typename std::conditional< Cond, TrueType, FalseType >::type;
+//----------------------------------------------------------------------------
+
+
+template <typename... Types> struct TypeList {};
+
+template <typename TypeList> struct TypeListSize;
+template <typename... Types> struct TypeListSize<TypeList<Types...>> {
+  static constexpr auto value = sizeof...(Types);
+};
+
+template < typename DefaultType
+         , template <typename> class Condition
+         , typename List
+         , bool Value = false
+         >
+struct TypeListFind;
+
+template < typename Type
+         , template <typename> class Condition
+         , typename T
+         , typename... Tail
+         , bool Value
+         >
+struct TypeListFind<Type, Condition, TypeList<T,Tail...>, Value>
+  : conditional_t< Condition<T>::value
+                 , TypeListFind<T,    Condition, TypeList<Tail...>, true>
+                 , TypeListFind<Type, Condition, TypeList<Tail...>, Value>
+                 >
+{
+  static_assert( !(Value && Condition<T>::value)
+               , "Error: more than one member of the parameter pack satisfies the condition."
+               );
+};
+
+template < typename Type
+         , template <typename> class Condition
+         , bool Value
+         >
+struct TypeListFind<Type, Condition, TypeList<>, Value>
+{
+  static constexpr bool value = Value;
+  using type = Type;
+};
+
+template< typename DefaultType
+        , template< typename > class Condition
+        , typename ... Pack >
+using has_condition = TypeListFind<DefaultType, Condition, TypeList<Pack...>>;
 
 } // namespace Impl
 } // namespace Kokkos
